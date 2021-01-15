@@ -24,7 +24,7 @@ Despite the crude method of including an entire interpreter, the minimum file si
 Here comes the bad news, there is no cross-compiling build-in.  
 If you want to create Windows binaries, then you will have to do so on Windows and the same is true for Linux.  
 
-Also please note that it matter whether you use the 32bit or 64bit version of the Python interpreter. Using the 64bit Linux interpreter results in a 64bit ELF binary.
+Also please note that it does matter whether you use the 32bit or 64bit version of the Python interpreter. Using the 64bit Linux interpreter results in a 64bit ELF binary.
 
 But I assume you have some VM's lying around that can be used.  
 [Wine might also work](https://stackoverflow.com/a/35605479), but I have not tried that.
@@ -44,10 +44,10 @@ I will use the 3+ version of Python for the following examples. But the process 
 If you have done CTF's or network pentesting, then you have probably encountered this python snippet before: 
 
 ```bash
-$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+python3 -c 'import pty; pty.spawn("/bin/bash")'
 ```
 
-This spawns a fully interactive pseudo-terminal that allows you to run commands such as `su` or `sudo`, which can be pretty handy if you were stuck with a semi-interactive reverse shell before.
+This spawns a fully interactive pseudo-terminal that allows you to run commands such as `su` or `sudo`, which can be pretty handy if you are stuck with a semi-interactive reverse shell.
 
 There are other ways to spawn a fully-interactive shell besides python, but this will do as a simple example.
 
