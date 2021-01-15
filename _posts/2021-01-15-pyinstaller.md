@@ -1,6 +1,6 @@
 ---
 title: "Tutorial: Create Binary Versions of Python Tools"
-date: 2021-01-14T15:34:30-04:00
+date: 2020-11-07T15:34:30-04:00
 categories:
   - tutorial
 tags:
@@ -47,7 +47,7 @@ If you have done CTF's or network pentesting, then you have probably encountered
 $ python3 -c 'import pty; pty.spawn("/bin/bash")'
 ```
 
-This spawns a fully interactive psuedo-terminal that allows you to run commands such as `su` or `sudo`, which can be pretty handy if you were stuck with a semi-interactive reverse shell before.
+This spawns a fully interactive pseudo-terminal that allows you to run commands such as `su` or `sudo`, which can be pretty handy if you were stuck with a semi-interactive reverse shell before.
 
 There are other ways to spawn a fully-interactive shell besides python, but this will do as a simple example.
 
