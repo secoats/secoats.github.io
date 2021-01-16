@@ -14,9 +14,9 @@ tags:
 With **PyInstaller** you can create stand-alone binaries that run on machines that do not have Python installed.
 
 On Linux it will create an executable ELF binary.  
-On Windows it creates a P32 or P32+ exe.  
+On Windows it creates a PE32 or PE32+ exe.  
 
-Despite the crude method of including an entire interpreter, the minimum file size for a 64bit ELF binary is around 4 MB and the Windows equivalent is around 7 MB. So only marginally worse than your average .NET Hello World /s.
+This created binary will include the python interpreter, so the minimum file size for a 64bit ELF binary is around 4 MB and the Windows equivalent is around 7 MB. 
 
 
 ## Cross-Compiling
@@ -24,7 +24,7 @@ Despite the crude method of including an entire interpreter, the minimum file si
 Here comes the bad news, there is no cross-compiling build-in.  
 If you want to create Windows binaries, then you will have to do so on Windows and the same is true for Linux.  
 
-Also please note that it does matter whether you use the 32bit or 64bit version of the Python interpreter. Using the 64bit Linux interpreter results in a 64bit ELF binary.
+Also please note that it **does** matter whether you use the 32bit or 64bit version of the Python interpreter. Using the 64bit Linux interpreter results in a 64bit ELF binary.
 
 But I assume you have some VM's lying around that can be used.  
 [Wine might also work](https://stackoverflow.com/a/35605479), but I have not tried that.
@@ -121,4 +121,4 @@ Password: hunter2
 kali@kali:/tmp/upgrade/dist$
 ```
 
-The `tty` command confirms our upgraded shell counts as a terminal. You should be able to do interactive commands like `su` now.
+The `tty` command confirms our upgraded shell counts as a terminal. You should be able to execute interactive commands like `su` now.
