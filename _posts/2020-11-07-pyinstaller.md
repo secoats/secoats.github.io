@@ -141,7 +141,7 @@ Save it as `receiver.py`:
 # openssl req -new -newkey rsa:4096 -days 730 -nodes -x509 -keyout server.key -out server.cert
 import socket, sys, ssl
 
-if (len(sys.argv) < 2):
+if (len(sys.argv) < 3):
     print("params: <listen_port> <output_filename>")
     sys.exit(0)
 
@@ -194,7 +194,7 @@ Now comes the uploader we will compile for Windows. Save it as `uploader.py`:
 #!/usr/bin/env python3
 import socket, sys, ssl
 
-if (len(sys.argv) < 3):
+if (len(sys.argv) < 4):
     print("params: <ip> <port> <filename>")
     sys.exit(0)
 
