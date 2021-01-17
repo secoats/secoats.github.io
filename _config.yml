@@ -56,7 +56,7 @@ plugins:
   - jekyll-include-cache
 
 author:
-  name   : "U+0A75 U+0A75"
+  name   : "Secoats"
   avatar : "/assets/images/secoats.png"
   bio    : "Ramblings about InfoSec, CTF, Pentesting and Tools"
   links:
