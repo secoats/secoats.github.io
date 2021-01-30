@@ -208,7 +208,16 @@ Now that seems to work as intended, but the output of the Ethernet MAC addresses
 
 We want the common hexadecimal MAC Address notation of `11-22-33-44` for the 4 bytes.
 
-So let's add a little MAC Address converter to the top of our python file:
+So let's add a little MAC Address converter to the top of our python file.
+
+All we need to do is iterate over those 6 bytes of the MAC address and use the format() function on each.
+
+This format string will do the trick: `02x`. 
+
+The `x` means it should be printed as hex. The `2` indicates it should be at least 2 characters and the `0` tells format() that the output should be padded with zeroes (instead of spaces) if it is only a single hex digit e.g `0A` instead of just `A`.
+
+In the end we just have to join all six formated strings back together with a dash inbetween. Which can be done with the well-named join() function:
+
 ```python
 #!/usr/bin/env python3
 import socket
