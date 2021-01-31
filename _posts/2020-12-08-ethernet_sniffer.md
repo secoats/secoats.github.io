@@ -188,7 +188,7 @@ while True:
 
 ```
 
-Note that we are using the maximum buffer size for our receive: 65565.
+The integer parameter in `recvfrom()` is the buffer size.
 
 Since we did not tell the socket which network interface we want to use, it will use the default interface.
 
@@ -258,7 +258,7 @@ But what is with that EtherType `0x800`?
 
 Wikipedia [once again comes to the resuce](https://en.wikipedia.org/wiki/EtherType#Examples) ([IEEE 802 Numbers](https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml#ieee-802-numbers-1)):
 
-The EtherType `0x800` indicates the Ethernet Frame contains an IPv4 payload. Which makes sense, considering I just sent an HTTP request to google.com.
+The EtherType `0x800` indicates the Ethernet Frame contains an IPv4 payload. Which makes sense, considering I just sent an HTTP request to google.com. HTTP/1.x is a TCP protocol that usually travels via IPv4 or IPv6.
 
 I have created a dictionary for this so we can easily translate the EtherType values to their human readable names:
 
@@ -516,7 +516,7 @@ The information we will look at for now is:
 
 The Internet Header Length (IHL) determines the length of the IPv4 header.
 
-The default (minimum) value is 5, which seems a bit inexplicable. But if we read the specification (or wikipedia), then we can figure that we have to multiply it by 4 and then we get the actual header length: 
+The default (minimum) value is 5, which seems a bit inexplicable. But if we read the specification (or wikipedia), then we can figure out that we have to multiply it by 4 and then we get the actual header length: 
 ```default
 5 x 4 Bytes = 20 Bytes
 ```
@@ -739,7 +739,7 @@ kali@kali:/tmp/blub$ sudo python3 sniffer.py
 
 It works, we can see my Kali VM (10.0.2.4) communicating with a google server (172.217.16.196).
 
-But this becomes a hard to read white ~~cluster...~~ blob of text. Let us add some colors.
+But this becomes a bit of a white ~~cluster...~~ blob of text. Let us add some colors.
 
 Most modern terminals on Linux and Windows support colored text printing:
 
@@ -1257,7 +1257,7 @@ Let's send an HTTP request to the W3C website:
 echo -e "GET / HTTP/1.0\r\n\r\n" | nc www.w3.org 80
 ```
 
-This is how the capture would look:
+This is how the capture looks like:
 
 {% include gallery id="image_full" caption="Sniffing UDP and TCP" %}
 
