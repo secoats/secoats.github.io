@@ -258,7 +258,7 @@ But what is with that EtherType `0x800`?
 
 Wikipedia [once again comes to the resuce](https://en.wikipedia.org/wiki/EtherType#Examples) ([IEEE 802 Numbers](https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml#ieee-802-numbers-1)):
 
-The EtherType `0x800` indicates the Ethernet Frame contains an IPv4 payload. Which makes sense, considering I just sent an HTTP request to google.com. HTTP/1.x is a TCP protocol that usually travels via IPv4 or IPv6.
+The EtherType `0x800` indicates the Ethernet Frame contains an IPv4 payload. Which makes sense, considering I just sent an HTTP request to google.com. HTTP/1.x is usually transmitted via TCP and IPv4 or IPv6.
 
 I have created a dictionary for this so we can easily translate the EtherType values to their human readable names:
 
