@@ -57,7 +57,7 @@ plugins:
 
 author:
   name   : "Secoats"
-  avatar : "/assets/images/secoats.png"
+  avatar : "/assets/images/secoats.jpg"
   bio    : "Ramblings about InfoSec, CTF, Pentesting and Tools"
   links:
     - label: "GitHub"
