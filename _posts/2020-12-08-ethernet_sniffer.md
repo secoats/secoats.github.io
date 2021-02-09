@@ -1,6 +1,7 @@
 ---
 title: "Tutorial: Build a Network Sniffer From Scratch"
 date: 2020-12-08T15:34:30-04:00
+last_modified_at: 2021-02-09T11:34:30-04:00
 categories:
   - tutorial
 tags:
@@ -77,6 +78,9 @@ For our purposes we will use `ETH_P_ALL	0x0003`. And of course we promise to be 
 ETH_P_ALL = 0x03
 s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
 ```
+
+Getting access to a raw socket on Windows is a bit more complicated, so we will work on *nix for now.
+
 
 ### Struct
 
@@ -536,11 +540,11 @@ from network_constants import ETHER_TYPE_DICT, IP_PROTO_DICT
 # ...
 
 class IPV4:
-
     ID = 0x0800 # EtherType
 
     def __init__(self, data):
-        VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, SOURCE, DEST, LEFTOVER = self.unpack_ipv4(data)
+        VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, \
+            SOURCE, DEST, LEFTOVER = self.unpack_ipv4(data)
 
         # BYTE 2 & 3
         self.LENGTH = LEN
@@ -555,8 +559,11 @@ class IPV4:
         self.DESTINATION = DEST
 
     def unpack_ipv4(self, data):
-        VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, SOURCE, DEST = struct.unpack("! B B H H H B B H 4s 4s", data[:20])
-        return VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, SOURCE, DEST, data[20:]
+        VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, \
+            SOURCE, DEST = struct.unpack("! B B H H H B B H 4s 4s", data[:20])
+
+        return VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, \
+            CHECKSUM, SOURCE, DEST, data[20:]
 
     def ipv4_to_str(self, data):
         octets = []
@@ -667,7 +674,8 @@ We can apply this to our `IPV4` class init function:
 
 ```python
 def __init__(self, data):
-    VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, SOURCE, DEST, LEFTOVER = self.unpack_ipv4(data)
+    VER_IHL, DSCP_ECN, LEN, ID, FLAGS_OFFSET, TTL, PROTO, CHECKSUM, \
+        SOURCE, DEST, LEFTOVER = self.unpack_ipv4(data)
 
     # Byte 0
     self.VERSION = VER_IHL >> 4
@@ -840,7 +848,6 @@ Extend `ethernet_tools.py` again with our UDP class:
 # ...
 
 class UDP:
-
     ID = 0x11 # IPv4 Protocol ID
     
     def __init__(self, data):
@@ -1149,11 +1156,11 @@ In `ethernet_tools.py`:
 ```python
 #...
 class TCP:
-
     ID = 0x06 # IPv4 Protocol ID
     
     def __init__(self, data):
-        SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, CHKSUM, URG_PTR, LEFTOVER = self.unpack_tcp(data)
+        SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, \
+            CHKSUM, URG_PTR, LEFTOVER = self.unpack_tcp(data)
         
         # Byte 0 & 1
         self.SOURCE_PORT = SRC
@@ -1199,16 +1206,30 @@ class TCP:
         self.PAYLOAD = LEFTOVER[options_len:]
 
     def unpack_tcp(self, data):
-        SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, CHKSUM, URG_PTR = struct.unpack("! H H I I H H H H", data[:20])
-        return SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, CHKSUM, URG_PTR, data[20:]
+        SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, \
+            CHKSUM, URG_PTR = struct.unpack("! H H I I H H H H", data[:20])
+
+        return SRC, DEST, SEQ, ACK_NUM, OFFSET_FLAGS, WIN_SIZE, \
+            CHKSUM, URG_PTR, data[20:]
 
     def __str__(self):
         active_flags = []
+
         for key in self.FLAGS:
             if self.FLAGS[key]:
                 active_flags.append(key)
 
-        return f"[ TCP - Source Port: {self.SOURCE_PORT}; Destination Port: {self.DEST_PORT}; Flags: ({', '.join(active_flags)}); Sequence: {self.SEQUENCE_NUM}; ACK_NUM: {self.ACK_NUM} ]"
+        flags_str = ', '.join(active_flags)
+
+        res = "[ TCP - "
+        res += f"Source Port: {self.SOURCE_PORT}; "
+        res += f"Destination Port: {self.DEST_PORT}; "
+        res += f"Flags: ({flags_str}); "
+        res += f"Sequence: {self.SEQUENCE_NUM}; "
+        res += f"ACK_NUM: {self.ACK_NUM} "
+        res += "]"
+
+        return res
 ```
 
 In `sniffer.py`:
@@ -1288,6 +1309,7 @@ while True:
 
     except Exception as e:
         print(red("[ Error: Failed To Parse Frame Data]"))
+        # print(red(e))
 ```
 
 It might also be worthwhile to create the option to assemble TCP segments to get the complete message and log them to output files.
