@@ -1,7 +1,7 @@
 ---
 title: "Tutorial: Build a Network Sniffer From Scratch"
 date: 2020-12-08T15:34:30-04:00
-last_modified_at: 2021-02-09T11:34:30-04:00
+last_modified_at: 2021-02-09T12:34:30-04:00
 categories:
   - tutorial
 tags:
@@ -617,9 +617,9 @@ In order to take this apart we can use simple bit-wise operators.
 
 ### Bit-Shifting Detour
 
-The bit-wise AND (&) operator does pretty much what we want. Let's assume our Input Byte has the binary value `0b10101010`
+The bit-wise AND (&) operator does pretty much what we want. Let's assume our Input Byte has the binary value `10101010`
 
-If we only want the right most 4 bits, then we can apply an AND with only the right four bits set to True `0x00001111`
+If we only want the right most 4 bits, then we can apply an AND with only the right four bits set to True `00001111`
 
 ```default
   1010 1010
@@ -1337,9 +1337,9 @@ def pack_udp(SOURCE, DEST, LEN, CHKSUM, data):
     return header + data
 ```
 
-Most of the time you will have to recalculate the header checksums though.
+Most of the time you will have to recalculate the header checksums though, if you change any of the headers or payloads.
 
-You can use this as the basis of a Spoofing attack (e.g. ARP spoofing).
+You can use this as the basis for a Spoofing attack (e.g. [ARP spoofing](https://en.wikipedia.org/wiki/ARP_spoofing)).
 
 
 ### Silent Profiling
@@ -1348,7 +1348,7 @@ You can create profiles of machines in the neighborhood.
 
 Keep track of MAC Addresses and associate IP Addresses and open Port numbers with them. This might be an alternative to noisy port scanners. 
 
-Due to switching, this might be not very effective though, unless you use some kind of spoofing.
+Due to switching, this might be not very effective though, unless you use some kind of spoofing. Wireless LAN is a different can of worms that I won't open here.
 
 
 ## FIN ACK
