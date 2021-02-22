@@ -1,7 +1,7 @@
 ---
 title: "Tutorial: Build a Network Sniffer From Scratch"
 date: 2020-12-08T15:34:30-04:00
-last_modified_at: 2021-02-09T12:34:30-04:00
+last_modified_at: 2021-02-22T12:34:30-04:00
 categories:
   - tutorial
 tags:
@@ -41,6 +41,7 @@ I expect you to have...
 
 * A basic understanding of the ISO/OSI (or TCP/IP) network model
 * At least beginner tier Python3 skills
+* Linux or other *nix OS
 * A free afternoon or two
 
 Also would help if you know what Bits and Bytes are.
@@ -163,8 +164,7 @@ So to put it simply, we will receive:
 * 2 bytes Ethernet Type Identifier
 * 46‑1500 bytes payload
 
-The minimum ethernet frame length is 64 bytes in total  
-(14 bytes header + 46 bytes payload + 4 bytes checksum).
+The minimum ethernet frame length is 64 bytes in total (14 bytes header + 46 bytes payload + 4 bytes checksum).
 
 Payloads that are smaller than 46 bytes will be padded with zeroed (0x00) bytes at the end.
 
@@ -194,9 +194,26 @@ while True:
 
 The integer parameter in `recvfrom()` is the buffer size.
 
-Since we did not tell the socket which network interface we want to use, it will use the default interface.
+Since we did not tell the socket which network interface we want to use, it will listen **on all interfaces**, which is fine for now.
 
-If we run this with `sudo python3 sniffer.py` and open google.com in a web browser, then we will see an output like this:
+But if you wanted, you could bind the socket to a single interface with:
+
+```python
+# Bind socket to a network interface by name
+s.bind(("eth0", 0))
+
+# Print basic socket info
+print(s.getsockname())          # ('eth0', 3, 0, 1, b"\x08\x00'~\x88\x1f")
+
+# Print all available interfaces
+print(socket.if_nameindex())    # [(1, 'lo'), (2, 'eth0')]
+```
+
+If your test network is already pretty noisy, then you might want to bind the socket to your loopback interface (here named `'lo'`) for now. That would ensure that you only receive localhost traffic.
+
+But enough about interfaces, let's get back to our sniffer.
+
+If we run our code with `sudo python3 sniffer.py` and open google.com in a web browser, then we will see an output like this:
 
 ```bash
 kali@kali:/tmp/blub$ sudo python3 sniffer.py
@@ -210,15 +227,16 @@ kali@kali:/tmp/blub$ sudo python3 sniffer.py
 
 Now that seems to work as intended, but the output of the Ethernet MAC addresses is not exactly pretty. 
 
-We want the common hexadecimal MAC Address notation of `11-22-33-44` for the 4 bytes.
 
-So let's add a little MAC Address converter to the top of our python file.
+### MAC Address Converter
 
-All we need to do is iterate over those 6 bytes of the MAC address and use the format() function on each.
+We want the common hexadecimal MAC Address notation of `11-22-33-44-aa-bb` for the six bytes. So let's add a little MAC Address converter to the top of our python file.
+
+All we need to do is iterate over those six bytes of the MAC address and use the format() function on each.
 
 This format string will do the trick: `02x`. 
 
-The `x` means it should be printed as hex. The `2` indicates it should be at least 2 characters and the `0` tells format() that the output should be padded with zeroes (instead of spaces) if it is only a single hex digit e.g `0A` instead of just `A`.
+The `x` means it should be printed as lowercase hex. The `2` indicates it should be at least 2 characters and the `0` tells format() that the output should be padded with zeroes (instead of spaces) if it is only a single hex digit e.g `0a` instead of just `a`.
 
 In the end we just have to join all six formated strings back together with a dash inbetween. Which can be done with the well-named join() function:
 
@@ -256,7 +274,7 @@ kali@kali:/tmp/blub$ sudo python3 sniffer.py
 [ Frame - Dest: 08-00-27-a9-d9-62; Source: 08-00-27-7e-88-1f; EtherType: 0x800 ]
 ```
 
-Now we can see the MAC addresses of my two VM's. My kali box `08-00-27-a9-d9-62` and the router VM `08-00-27-7e-88-1f` talking with each other.
+Now we can see the MAC addresses of my two VM's. My kali box `08-00-27-7e-88-1f` and the router VM `08-00-27-a9-d9-62` talking with each other.
 
 But what is with that EtherType `0x800`?
 
@@ -469,7 +487,6 @@ And the second byte contains both DSCP (6 bits) and ECN (2 bits):
     <td style="background:rgb(61, 65, 73);" colspan="2">ECN</td>
   </tr>
 </table>
-
 
 
 Byte 6 and 7 contain Flags & Offset. The Flags field is 3 bits, Offset is 13 bits:
@@ -1361,3 +1378,5 @@ Here are all the files:
 * [network_constants.py](https://gist.github.com/secoats/991d4d586dd39dad258ca02e046948e3)
 * [ethernet_tools.py](https://gist.github.com/secoats/b8513c43044441742981ad7ee4cfcb12)
 * [sniffer.py](https://gist.github.com/secoats/669f03081b0115fee6635052531689f8)
+
+Or summarized as a [Github repository (branch "tutorial")](https://github.com/secoats/agora_network_sniffer/tree/tutorial).
