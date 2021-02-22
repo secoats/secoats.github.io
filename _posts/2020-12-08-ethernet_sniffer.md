@@ -1,7 +1,7 @@
 ---
 title: "Tutorial: Build a Network Sniffer From Scratch"
 date: 2020-12-08T15:34:30-04:00
-last_modified_at: 2021-02-22T12:34:30-04:00
+last_modified_at: 2021-02-22T13:34:30-04:00
 categories:
   - tutorial
 tags:
@@ -136,7 +136,7 @@ If we check the wikipedia article for ["Ethernet Frame"](https://en.wikipedia.or
 
 <table style="text-align:center; width:100%; display: table; table-layout: fixed; border-collapse: separate; border:1px solid rgb(81, 85, 93);">
   <thead>
-    <th colspan="5" style="text-align:center;">Ethernet Type II Frame</th>
+    <th colspan="5" style="text-align:center;">Ethernet II Frame</th>
   </thead>
   <thead>
     <th style="text-align:center;">MAC destination</th>
@@ -1285,7 +1285,7 @@ while True:
             print(green(hexdump(tcp.PAYLOAD, 5)))
 ```
 
-That's about as far as we will go in this tutorial when it comes to protocols.
+That should do it.
 
 For instance, now we can capture the entirety of an HTTP communication.
 
@@ -1303,6 +1303,8 @@ Seems to work!
 
 Comparing the header values and payloads in Wireshark shows that our parsing appears to be accurate.
 
+That's about as far as we will go in this tutorial when it comes to protocols.
+
 
 ## Improvements and Some Use Cases
 
@@ -1310,9 +1312,9 @@ That concludes this tutorial, but here are some afterthoughts.
 
 Of course you can implement data structures for some other common protocols. But the problem we now have is rather too much information. 
 
-So building some filters to only display certain protocols would be a good idea. You should also add some [command line options](https://docs.python.org/3/library/argparse.html) in order to control the output. 
+So building some filters to only display certain protocols and network interfaces would be a good idea. You could add some [command line options](https://docs.python.org/3/library/argparse.html) in order to control the output. 
 
-And we have done absolutely zero error handling so far. I would recommend simply discarding any Ethernet Frame that causes an error and move on to the next iteration.
+And we have done absolutely zero error handling so far. I would recommend simply discarding any Ethernet Frame that causes an error and move on to the next iteration:
 
 ```python
 while True:
@@ -1326,10 +1328,11 @@ while True:
 
     except Exception as e:
         print(red("[ Error: Failed To Parse Frame Data]"))
-        # print(red(e))
+        print(red(str(e)))
 ```
 
 It might also be worthwhile to create the option to assemble TCP segments to get the complete message and log them to output files.
+
 
 ### Sniffing for Info
 
