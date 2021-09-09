@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | Tutorial: Build a Network Sniffer From Scratch</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/ethernet_sniffer.html" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="Tutorial: Build a Network Sniffer From Scratch" />
+        <meta property="og:url" content="https://secoats.github.io/posts/ethernet_sniffer.html" />
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">Tutorial: Build a Network Sniffer From Scratch</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 24 minute read</span> - <span class="article-meta-published">December 08, 2020</span>
+                    </p>
+                    <p>A <a href="https://en.wikipedia.org/wiki/Packet_analyzer">network sniffer</a> allows you to intercept, log and analyze network traffic.</p>
+<p>In this tutorial we will build one from scratch in python3, using only standard libraries.</p>
+<p>If you are just looking for a good sniffer, then you should probably use <a href="https://www.tcpdump.org/">tcpdump</a> (terminal) or <a href="https://www.wireshark.org/">Wireshark</a> (GUI). We are kind of reinventing the wheel here. The point of this tutorial is to take a (somewhat) deep dive into the network stack.</p>
+<p>If you have fun building things yourself, or if you like to be able to turn every little knob, then this program-along tutorial is for you.  </p>
+<p>I expect you to have a basic understanding of the <a href="https://en.wikipedia.org/wiki/OSI_model">ISO/OSI</a> (or <a href="https://en.wikipedia.org/wiki/Internet_protocol_suite">TCP/IP</a>) network model and beginner tier Python3 skills. We will write this application on Linux since it gives us greater freedom when it comes to sniffing low level traffic.</p>
+<h2 id="ingredients">Ingredients<a class="headerlink" href="#ingredients" title="Permanent link"> </a></h2>
+<p>All we really need for this is access to a raw socket. Which the Python3 <code>socket</code> API happily provides us with (requires root priviliges):</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">socket</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="nb">filter</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>You will notice the third parameter <code>filter</code>, which determines which kind of packets we will receive from the network interface.</p>
+<p>If you are on Linux, then a quick look into <code>/usr/include/linux/if_ether.h</code> gives us a list of the available values for this filter. Under the section "Non DIX types..." we find the following:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="cp">#define ETH_P_802_3 0x0001  </span><span class="cm">/* Dummy type for 802.3 frames  */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_AX25  0x0002  </span><span class="cm">/* Dummy protocol id for AX.25  */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_ALL   0x0003  </span><span class="cm">/* Every packet (be careful!!!) */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_802_2 0x0004  </span><span class="cm">/* 802.2 frames         */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_SNAP  0x0005  </span><span class="cm">/* Internal only        */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_DDCMP     0x0006  </span><span class="cm">/* DEC DDCMP: Internal only     */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_WAN_PPP   0x0007  </span><span class="cm">/* Dummy type for WAN PPP frames*/</span><span class="cp"></span>
+<span class="cp">#define ETH_P_PPP_MP    0x0008  </span><span class="cm">/* Dummy type for PPP MP frames */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_LOCALTALK 0x0009  </span><span class="cm">/* Localtalk pseudo type    */</span><span class="cp"></span>
+<span class="cp">#define ETH_P_CAN   0x000C  </span><span class="cm">/* CAN: Controller Area Network */</span><span class="cp"></span>
+<span class="cp">#...</span>
+</code></pre></div></div></div>
+<p>For our purposes we will use <code>ETH_P_ALL 0x0003</code>. And of course we promise to be careful ;)</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+</code></pre></div></div></div>
+<p>Getting access to a raw socket on Windows is a bit more complicated, so we will work on *nix for now.</p>
+<h3 id="struct">Struct<a class="headerlink" href="#struct" title="Permanent link"> </a></h3>
+<p>For plucking apart the bytes that we will receive we can use another Python3 standard library called <code>struct</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">struct</span>
+<span class="n">data</span> <span class="o">=</span> <span class="nb">bytes</span><span class="p">([</span><span class="mh">0x01</span><span class="p">,</span> <span class="mh">0x02</span><span class="p">,</span> <span class="mh">0x03</span><span class="p">,</span> <span class="mh">0x04</span><span class="p">,</span> <span class="mh">0x05</span><span class="p">,</span> <span class="mh">0x06</span><span class="p">,</span> <span class="mh">0x07</span><span class="p">,</span> <span class="mh">0x08</span><span class="p">])</span>
+<span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s2">"! H H H H"</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">8</span><span class="p">])</span>
+</code></pre></div></div></div>
+<p>This example snippet takes 8 continous bytes as input and returns 4 individual short values.</p>
+<p>The exclamation mark <code>!</code> tells struct that we want to work with network byte order (Big Endian).</p>
+<p>For an unsigned byte we use <code>B</code><br/>
+For an unsigned short (two bytes) we use <code>H</code><br/>
+For an unsigned integer (four bytes) it is  <code>I</code><br/>
+For an unsigned long long (eight bytes) it is <code>Q</code></p>
+<p>You can also snip off an odd number of bytes by using <code>6s</code>, which would return 6 bytes as a Python3 <code>bytes</code> object.</p>
+<p>The lowercase variants <code>b</code>, <code>h</code>, <code>i</code> and <code>q</code> are the signed versions, which we won't really use in this tutorial.</p>
+<h2 id="layers">Layers<a class="headerlink" href="#layers" title="Permanent link"> </a></h2>
+<p>If you remember your network class, the abridged OSI network model looks somewhat like this:</p>
+<ol>
+<li>Physical Layer</li>
+<li><strong>Data Link</strong></li>
+<li><strong>Network</strong></li>
+<li><strong>Transport Layer</strong></li>
+<li>Session and Application Layers</li>
+</ol>
+<p>Wherein the data is transmitted and received by the physical hardware on layer 1 and then moves it way up through the various layers until it eventually reaches the user at the highest layer.</p>
+<p>We will work our way up from the second Layer to the fourth Layer and look at:</p>
+<ul>
+<li>Ethernet Frames (L2)</li>
+<li>IPv4 Packets (L3)</li>
+<li>TCP Segments and UDP Datagrams (L4)</li>
+</ul>
+<p>I have excluded IPv6 for simplicity's sake (but it should be easy for you to implement that yourself afterwards).</p>
+<p>The reason why we start at such a low level is that we will look at ARP (L2 &amp; L3) and similar protocols in later tutorials.</p>
+<h2 id="l2-ethernet">L2: Ethernet<a class="headerlink" href="#l2-ethernet" title="Permanent link"> </a></h2>
+<p>If we check the wikipedia article for <a href="https://en.wikipedia.org/wiki/Ethernet_frame">"Ethernet Frame"</a>, we can find the format of a layer 2 Ethernet frame:</p>
+<table class="protocol">
+<thead>
+<th class="table-header" colspan="5">Ethernet II Frame</th>
+</thead>
+<thead>
+<th>MAC Destination</th>
+<th>MAC Source</th>
+<th>Ethertype</th>
+<th>Payload</th>
+<th class="stripes-bg">Frame Check 32‑bit CRC</th>
+</thead>
+<tr>
+<td>6 Bytes</td>
+<td>6 Bytes</td>
+<td>2 Bytes</td>
+<td>46‑1500 Bytes</td>
+<td class="stripes-bg">4 Bytes</td>
+</tr>
+</table>
+<p>Python "raw" ethernet sockets will hand over ethernet frames <strong>minus the 4 bytes checksum</strong> at the end.</p>
+<p>So to put it simply, we will receive:</p>
+<ul>
+<li>6 bytes destination MAC Address</li>
+<li>6 bytes source MAC Address</li>
+<li>2 bytes Ethernet Type Identifier (payload protocol)</li>
+<li>46‑1500 bytes payload</li>
+</ul>
+<p>The minimum ethernet frame length is 64 bytes in total (14 bytes header + 46 bytes payload + 4 bytes checksum).</p>
+<p>Payloads that are smaller than 46 bytes will be padded with zeroed (0x00) bytes at the end.</p>
+<p>The python socket will automatically add/remove the 4 bytes checksum at the end and it will also automatically add/remove the 0x00 padding at the end of your payload. So be aware of that when you write your code, you might receive less than 60 bytes because there was padding and it has already been removed.</p>
+<p>Now let's turn what we have learned into code.</p>
+<p>Save this as <code>sniffer.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="k">def</span> <span class="nf">unpack_ethernet_frame</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">'! 6s 6s H'</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">14</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">14</span><span class="p">:]</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+    <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">payload</span> <span class="o">=</span> <span class="n">unpack_ethernet_frame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[ Frame - Dest: </span><span class="si">{</span><span class="n">dest_mac</span><span class="si">}</span><span class="s2">; Source: </span><span class="si">{</span><span class="n">src_mac</span><span class="si">}</span><span class="s2">; EtherType: </span><span class="si">{</span><span class="nb">hex</span><span class="p">(</span><span class="n">ethertype</span><span class="p">)</span><span class="si">}</span><span class="s2"> ]"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>The integer parameter in <code>recvfrom()</code> is the buffer size.</p>
+<p>Since we did not tell the socket which network interface we want to use, it will listen <strong>on all interfaces</strong>, which is fine for now.</p>
+<p>But if you wanted, you could bind the socket to a single interface with:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1"># Bind socket to a network interface by name</span>
+<span class="n">s</span><span class="o">.</span><span class="n">bind</span><span class="p">((</span><span class="s2">"eth0"</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+
+<span class="c1"># Print basic socket info</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">getsockname</span><span class="p">())</span>          <span class="c1"># ('eth0', 3, 0, 1, b"\x08\x00'~\x88\x1f")</span>
+
+<span class="c1"># Print all available interfaces</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">if_nameindex</span><span class="p">())</span>    <span class="c1"># [(1, 'lo'), (2, 'eth0')]</span>
+</code></pre></div></div></div>
+<p>If your test network is already pretty noisy, then you might want to bind the socket to your loopback interface (here named <code>'lo'</code>) for now. That would ensure that you only receive localhost traffic.</p>
+<p>But enough about interfaces, let's get back to our sniffer.</p>
+<p>If we run our code with <code>sudo python3 sniffer.py</code> and open google.com in a web browser, then we will see an output like this:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>kali@kali:/tmp/blub$ sudo python3 sniffer.py
+<span class="o">[</span> Frame - Dest: b<span class="s2">"\x08\x00'\xa9\xd9b"</span><span class="p">;</span> Source: b<span class="s2">"\x08\x00'~\x88\x1f"</span><span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: b<span class="s2">"\x08\x00'\xa9\xd9b"</span><span class="p">;</span> Source: b<span class="s2">"\x08\x00'~\x88\x1f"</span><span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: b<span class="s2">"\x08\x00'\xa9\xd9b"</span><span class="p">;</span> Source: b<span class="s2">"\x08\x00'~\x88\x1f"</span><span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: b<span class="s2">"\x08\x00'~\x88\x1f"</span><span class="p">;</span> Source: b<span class="s2">"\x08\x00'\xa9\xd9b"</span><span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: b<span class="s2">"\x08\x00'\xa9\xd9b"</span><span class="p">;</span> Source: b<span class="s2">"\x08\x00'~\x88\x1f"</span><span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="c1"># Press CTRL+C to kill the sniffer</span>
+</code></pre></div></div></div>
+<p>Now that seems to work as intended, but the output of the Ethernet MAC addresses is not exactly pretty. </p>
+<h3 id="mac-address-converter">MAC Address Converter<a class="headerlink" href="#mac-address-converter" title="Permanent link"> </a></h3>
+<p>We want the common hexadecimal MAC Address notation of <code>11-22-33-aa-bb-cc</code> for the six bytes. So let's add a little MAC Address converter to the top of our python file.</p>
+<p>All we need to do is iterate over those six bytes of the MAC address and use the format() function on each.</p>
+<p>This format string will do the trick: <code>02x</code>. </p>
+<p>The <code>x</code> means it should be printed as lowercase hex. The <code>2</code> indicates it should be at least 2 characters and the <code>0</code> tells format() that the output should be padded with zeroes (instead of spaces) if it is only a single hex digit e.g <code>0a</code> instead of just <code>a</code>.</p>
+<p>In the end we just have to join all six formated strings back together with a dash inbetween. Which can be done with the well-named <code>join(...)</code> function:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="k">def</span> <span class="nf">unpack_ethernet_frame</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">'! 6s 6s H'</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">14</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">14</span><span class="p">:]</span>
+
+<span class="k">def</span> <span class="nf">mac_to_str</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="n">octets</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="n">octets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">format</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s1">'02x'</span><span class="p">))</span>
+    <span class="k">return</span> <span class="s2">"-"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">octets</span><span class="p">)</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+    <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">payload</span> <span class="o">=</span> <span class="n">unpack_ethernet_frame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[ Frame - Dest: </span><span class="si">{</span><span class="n">mac_to_str</span><span class="p">(</span><span class="n">dest_mac</span><span class="p">)</span><span class="si">}</span><span class="s2">; Source: </span><span class="si">{</span><span class="n">mac_to_str</span><span class="p">(</span><span class="n">src_mac</span><span class="p">)</span><span class="si">}</span><span class="s2">; EtherType: </span><span class="si">{</span><span class="nb">hex</span><span class="p">(</span><span class="n">ethertype</span><span class="p">)</span><span class="si">}</span><span class="s2"> ]"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>We get a nicer print-out:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>kali@kali:/tmp/blub$ sudo python3 sniffer.py 
+<span class="o">[</span> Frame - Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+<span class="o">[</span> Frame - Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> EtherType: 0x800 <span class="o">]</span>
+</code></pre></div></div></div>
+<p>Now we can see the MAC addresses of my two VM's. My kali box <code>08-00-27-7e-88-1f</code> and the router VM <code>08-00-27-a9-d9-62</code> talking with each other.</p>
+<p>But what is with that EtherType <code>0x800</code>?</p>
+<p>Wikipedia <a href="https://en.wikipedia.org/wiki/EtherType#Examples">once again comes to the rescue</a> (See also <a href="https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml#ieee-802-numbers-1">IEEE 802 Numbers</a>):</p>
+<p>The EtherType <code>0x800</code> indicates that the Ethernet Frame contains an IPv4 payload. Which makes sense, considering I just sent an HTTP request to google.com. HTTP/1.x is usually transmitted via TCP which in turn gets encapsulated in IPv4 or Ipv6 packages.</p>
+<p>I have created a dictionary for this so we can easily translate the EtherType values to their human readable names:</p>
+<ul>
+<li><a href="https://gist.github.com/secoats/991d4d586dd39dad258ca02e046948e3">Github Gist - network_constants.py</a></li>
+</ul>
+<p>Save this as <code>network_constants.py</code> in the same directory.</p>
+<h3 id="creating-structure">Creating Structure<a class="headerlink" href="#creating-structure" title="Permanent link"> </a></h3>
+<p>Since we will parse a bunch of other protocols, we should create a rudimentary structure that we can use to parse and store the data we receive.</p>
+<p>We will create a class for our ethernet frames called <code>EthernetFrame</code>.</p>
+<p>Create a new file called <code>ethernet_tools.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">network_constants</span> <span class="kn">import</span> <span class="n">ETHER_TYPE_DICT</span>
+
+<span class="k">class</span> <span class="nc">EthernetFrame</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">payload</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unpack_ethernet_frame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">DESTINATION</span> <span class="o">=</span> <span class="n">dest_mac</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">SOURCE</span> <span class="o">=</span> <span class="n">src_mac</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">=</span> <span class="n">ethertype</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">PAYLOAD</span> <span class="o">=</span> <span class="n">payload</span>
+
+    <span class="k">def</span> <span class="nf">unpack_ethernet_frame</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">'! 6s 6s H'</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">14</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">dest_mac</span><span class="p">,</span> <span class="n">src_mac</span><span class="p">,</span> <span class="n">ethertype</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">14</span><span class="p">:]</span>
+
+    <span class="k">def</span> <span class="nf">mac_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">octets</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">octets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">format</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s1">'02x'</span><span class="p">))</span>
+        <span class="k">return</span> <span class="s2">"-"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">octets</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ether</span> <span class="o">=</span> <span class="nb">hex</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ETHER_TYPE</span><span class="p">)</span>
+        <span class="n">trans</span> <span class="o">=</span> <span class="s2">"UNKNOWN"</span>
+
+        <span class="c1"># Translate EtherType to human readable text</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="ow">in</span> <span class="n">ETHER_TYPE_DICT</span><span class="p">:</span>
+            <span class="n">trans</span> <span class="o">=</span> <span class="n">ETHER_TYPE_DICT</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ETHER_TYPE</span><span class="p">]</span>
+
+        <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mac_to_str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SOURCE</span><span class="p">)</span>
+        <span class="n">dest</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mac_to_str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">DESTINATION</span><span class="p">)</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"[ Ethernet - </span><span class="si">{</span><span class="n">ether</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">trans</span><span class="si">}</span><span class="s2">; Source: </span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">; Dest: </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2">; Len: </span><span class="si">{</span><span class="n">length</span><span class="si">}</span><span class="s2"> ]"</span>
+</code></pre></div></div></div>
+<p>Now we can clean up our <code>sniffer.py</code> file a bit:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>At this point we should have the following files in our working directory:</p>
+<ul>
+<li>sniffer.py</li>
+<li>ethernet_tools.py</li>
+<li>network_constants.py</li>
+</ul>
+<p>And our print-outs should look somewhat like this:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>kali@kali:/tmp/blub$ sudo python3 sniffer.py 
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">52</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">52</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">56</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">56</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">72</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">84</span> <span class="o">]</span>
+</code></pre></div></div></div>
+<h2 id="l3-ipv4">L3: IPv4<a class="headerlink" href="#l3-ipv4" title="Permanent link"> </a></h2>
+<p>Now that we have taken care of Ethernet we can take a look at one of the protocols that will most likely contain valuable information.</p>
+<p>Sadly the IPv4 header is a bit more complex than the nice and boring Ethernet header.</p>
+<table class="protocol">
+<thead>
+<th class="table-header" colspan="4">IPv4 Header Bytes</th>
+</thead>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 0</th>
+<th>Byte 1</th>
+<th>Byte 2</th>
+<th>Byte 3</th>
+</thead>
+<tr>
+<td>Version &amp; IHL</td>
+<td>DSCP &amp; ECN</td>
+<td "="" colspan="2">Total Length</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 4</th>
+<th>Byte 5</th>
+<th>Byte 6</th>
+<th>Byte 7</th>
+</thead>
+<tr>
+<td colspan="2">Identification</td>
+<td colspan="2">Flags &amp; Offset</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 8</th>
+<th>Byte 9</th>
+<th>Byte 10</th>
+<th>Byte 11</th>
+</thead>
+<tr>
+<td>Time To Live</td>
+<td>Protocol</td>
+<td colspan="2">Header Checksum</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 12</th>
+<th>Byte 13</th>
+<th>Byte 14</th>
+<th>Byte 15</th>
+</thead>
+<tr>
+<td colspan="4">Source IP Address</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 16</th>
+<th>Byte 17</th>
+<th>Byte 18</th>
+<th>Byte 19</th>
+</thead>
+<tr>
+<td colspan="4">Destination IP Address</td>
+</tr>
+</table>
+<table class="protocol">
+<tr>
+<td colspan="4">More bytes are used for Options if IHL &gt; 5, otherwise the payload starts here directly.</td>
+</tr>
+</table>
+<p>Some of these fields are subdivided into smaller fields that do not necessarily fall in line with clean byte borders.</p>
+<p>For instance the first byte contains both Version &amp; IHL, which are 4 bits each. The "0" bit here is the left-most bit of the byte.</p>
+<table class="protocol">
+<thead>
+<th class="table-info-header" colspan="1">Bytes:</th>
+<th colspan="8">Byte 0</th>
+</thead>
+<thead>
+<th class="table-info-header">Bits:</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+</thead>
+<tr>
+<th class="table-info-header">Content:</th>
+<td colspan="4">Version</td>
+<td colspan="4">IHL</td>
+</tr>
+</table>
+<p>And the second byte contains both DSCP (6 bits) and ECN (2 bits):</p>
+<table class="protocol">
+<thead>
+<th class="table-info-header" colspan="1">Bytes:</th>
+<th colspan="8">Byte 1</th>
+</thead>
+<thead>
+<th class="table-info-header">Bits:</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+</thead>
+<tr>
+<th class="table-info-header">Content:</th>
+<td colspan="6">DSCP</td>
+<td colspan="2">ECN</td>
+</tr>
+</table>
+<p>Byte 6 and 7 contain Flags &amp; Offset. The Flags field is 3 bits, Offset is 13 bits:</p>
+<table class="protocol">
+<thead>
+<th colspan="8">Byte 6</th>
+<th colspan="8">Byte 7</th>
+</thead>
+<thead>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+<th>8</th>
+<th>9</th>
+<th>10</th>
+<th>11</th>
+<th>12</th>
+<th>13</th>
+<th>14</th>
+<th>15</th>
+</thead>
+<tr>
+<td colspan="3">Flags</td>
+<td colspan="13">Offset</td>
+</tr>
+</table>
+<p>Yes, I know what you are thinking right now. All of this looks a bit overwhelming. Luckily we are only interested in a few of these fields, at least at the moment. </p>
+<p>We will only do a rough parsing of these fields and pick out the ones we actually need.</p>
+<p>The information we will look at for now is:</p>
+<ul>
+<li>Source IP Address</li>
+<li>Target IP Address</li>
+<li>IHL - Internet Header Length (so we can parse this mess)</li>
+<li>Protocol (so we know what payload this IPv4 packet has)</li>
+<li>Total Length</li>
+</ul>
+<h3 id="ip-header-length">IP Header Length<a class="headerlink" href="#ip-header-length" title="Permanent link"> </a></h3>
+<p>The Internet Header Length (IHL) determines the length of the IPv4 header.</p>
+<p>The default (minimum) value is 5, which seems a bit inexplicable. But if we read the specification (or wikipedia), then we can figure out that we have to multiply it by 4 and then we get the actual header length: </p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="mi">5</span> <span class="n">x</span> <span class="mi">4</span> <span class="n">Bytes</span> <span class="o">=</span> <span class="mi">20</span> <span class="n">Bytes</span>
+</code></pre></div></div></div>
+<p>This matches the Byte Table I have shown you above. This also means the (optional) Options field, if it exists, always has to be a multiple of 4 bytes (32 bits).</p>
+<h3 id="parsing-ipv4">Parsing IPv4<a class="headerlink" href="#parsing-ipv4" title="Permanent link"> </a></h3>
+<p>Let's turn what we have learned into code again. We will add a class <code>IPV4</code> to <code>ethernet_tools.py</code>.</p>
+<p>We can copypaste quite a lot of this from the <code>EthernetFrame</code> class with minor adjustments:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">network_constants</span> <span class="kn">import</span> <span class="n">ETHER_TYPE_DICT</span><span class="p">,</span> <span class="n">IP_PROTO_DICT</span>
+<span class="c1"># ...</span>
+<span class="c1"># class EthernetFrame omitted</span>
+<span class="c1"># ...</span>
+
+<span class="k">class</span> <span class="nc">IPV4</span><span class="p">:</span>
+    <span class="n">ID</span> <span class="o">=</span> <span class="mh">0x0800</span> <span class="c1"># EtherType</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">VER_IHL</span><span class="p">,</span> <span class="n">DSCP_ECN</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">ID</span><span class="p">,</span> <span class="n">FLAGS_OFFSET</span><span class="p">,</span> <span class="n">TTL</span><span class="p">,</span> <span class="n">PROTO</span><span class="p">,</span> <span class="n">CHECKSUM</span><span class="p">,</span> \
+            <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEFTOVER</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unpack_ipv4</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="c1"># BYTE 2 &amp; 3</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">LENGTH</span> <span class="o">=</span> <span class="n">LEN</span>
+
+        <span class="c1"># BYTE 9</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">=</span> <span class="n">PROTO</span>
+
+        <span class="c1"># BYTE 12 &amp; 13</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">SOURCE</span> <span class="o">=</span> <span class="n">SOURCE</span>
+
+        <span class="c1"># BYTE 14 &amp; 15</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">DESTINATION</span> <span class="o">=</span> <span class="n">DEST</span>
+
+    <span class="k">def</span> <span class="nf">unpack_ipv4</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">VER_IHL</span><span class="p">,</span> <span class="n">DSCP_ECN</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">ID</span><span class="p">,</span> <span class="n">FLAGS_OFFSET</span><span class="p">,</span> <span class="n">TTL</span><span class="p">,</span> <span class="n">PROTO</span><span class="p">,</span> <span class="n">CHECKSUM</span><span class="p">,</span> \
+            <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s2">"! B B H H H B B H 4s 4s"</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">20</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">VER_IHL</span><span class="p">,</span> <span class="n">DSCP_ECN</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">ID</span><span class="p">,</span> <span class="n">FLAGS_OFFSET</span><span class="p">,</span> <span class="n">TTL</span><span class="p">,</span> <span class="n">PROTO</span><span class="p">,</span> \
+            <span class="n">CHECKSUM</span><span class="p">,</span> <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">20</span><span class="p">:]</span>
+
+    <span class="k">def</span> <span class="nf">ipv4_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">octets</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">octets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">format</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s1">'d'</span><span class="p">))</span>
+        <span class="k">return</span> <span class="s2">"."</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">octets</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">proto</span> <span class="o">=</span> <span class="nb">hex</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PROTOCOL</span><span class="p">)</span>
+        <span class="n">trans</span> <span class="o">=</span> <span class="s2">"UNKNOWN"</span>
+
+        <span class="c1"># Translate IPv4 payload Protocol to human readable name</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="ow">in</span> <span class="n">IP_PROTO_DICT</span><span class="p">:</span>
+            <span class="n">trans</span> <span class="o">=</span> <span class="n">IP_PROTO_DICT</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">PROTOCOL</span><span class="p">]</span>
+
+        <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ipv4_to_str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SOURCE</span><span class="p">)</span>
+        <span class="n">dest</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ipv4_to_str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">DESTINATION</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"[ IPV4 - Proto: </span><span class="si">{</span><span class="n">proto</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">trans</span><span class="si">}</span><span class="s2">; Source: </span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">; Dest: </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2"> ]"</span>
+</code></pre></div></div></div>
+<p>Note that the IP address converter is basically identical to the MAC address coverter, we are just turning the bytes into decimals instead of hex and use a dot as separator instead of a dash.</p>
+<p>Now the first order of business should be taking apart the first byte containing VERSION &amp; IHL so we can determine the start of the payload.</p>
+<p>You might remember the 0 byte is split perfectly in half with each value being 4 bits each:</p>
+<table class="protocol">
+<thead>
+<th class="table-info-header" colspan="1">Bytes:</th>
+<th colspan="8">Byte 0 (IPv4)</th>
+</thead>
+<thead>
+<th class="table-info-header">Bits:</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+</thead>
+<tr>
+<th class="table-info-header">Content:</th>
+<td colspan="4">Version</td>
+<td colspan="4">IHL</td>
+</tr>
+</table>
+<p>In order to take this apart we can use simple bit-wise operators.</p>
+<h3 id="bit-shifting-detour">Bit-Shifting Detour<a class="headerlink" href="#bit-shifting-detour" title="Permanent link"> </a></h3>
+<p>The bit-wise AND (&amp;) operator does pretty much what we want. Let's assume our Input Byte has the binary value <code>10101010</code></p>
+<p>If we only want the right most 4 bits, then we can apply an AND with only the right four bits set to True <code>00001111</code></p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>  <span class="mi">1010</span> <span class="mi">1010</span>
+<span class="o">&amp;</span> <span class="mi">0000</span> <span class="mi">1111</span>
+  <span class="o">---------</span>
+<span class="o">=</span> <span class="mi">0000</span> <span class="mi">1010</span>
+</code></pre></div></div></div>
+<p>As Python code:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">VER_IHL</span> <span class="o">=</span> <span class="mb">0b10101010</span>
+<span class="n">IHL</span> <span class="o">=</span> <span class="n">VER_IHL</span> <span class="o">&amp;</span> <span class="mb">0b00001111</span>  <span class="c1"># 00001010</span>
+</code></pre></div></div></div>
+<p>Or more concise with Hex notation:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">VER_IHL</span> <span class="o">=</span> <span class="mb">0b10101010</span>
+<span class="n">IHL</span> <span class="o">=</span> <span class="n">VER_IHL</span> <span class="o">&amp;</span> <span class="mh">0x0F</span>        <span class="c1"># 00001010</span>
+</code></pre></div></div></div>
+<p>And done. We have the IHL.</p>
+<p>Now we need to extract the VERSION value. The process is the same for the 4 bits on the left:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>  <span class="mi">1010</span> <span class="mi">1010</span>
+<span class="o">&amp;</span> <span class="mi">1111</span> <span class="mi">0000</span>
+  <span class="o">---------</span>
+<span class="o">=</span> <span class="mi">1010</span> <span class="mi">0000</span>
+</code></pre></div></div></div>
+<p>But since the value of Binary is read from right-to-left we will have to get rid of the 4 zeroed bits on the right. We can accomplish this by shifting everything 4 bits to the right with the shift operator <code>&gt;&gt;</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>  <span class="mi">1010</span> <span class="mi">0000</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>
+  <span class="o">---------</span>
+<span class="o">=</span>      <span class="mi">1010</span>
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">VER_IHL</span> <span class="o">=</span> <span class="mb">0b10101010</span>
+<span class="n">VERSION</span> <span class="o">=</span> <span class="p">(</span><span class="n">VER_IHL</span> <span class="o">&amp;</span> <span class="mh">0xF0</span><span class="p">)</span>  <span class="c1"># 10100000</span>
+<span class="n">VERSION</span> <span class="o">=</span> <span class="n">VERSION</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>      <span class="c1"># 00001010</span>
+</code></pre></div></div></div>
+<p>Since the four right-most bits effectively get deleted by the shift anyway, we can just shorten this to:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">VER_IHL</span> <span class="o">=</span> <span class="mb">0b10101010</span>
+<span class="n">VERSION</span> <span class="o">=</span> <span class="n">VER_IHL</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>      <span class="c1"># 00001010</span>
+</code></pre></div></div></div>
+<p>We can apply this to our <code>IPV4</code> class init function:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="n">VER_IHL</span><span class="p">,</span> <span class="n">DSCP_ECN</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">ID</span><span class="p">,</span> <span class="n">FLAGS_OFFSET</span><span class="p">,</span> <span class="n">TTL</span><span class="p">,</span> <span class="n">PROTO</span><span class="p">,</span> <span class="n">CHECKSUM</span><span class="p">,</span> \
+        <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEFTOVER</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unpack_ipv4</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+    <span class="c1"># Byte 0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">VERSION</span> <span class="o">=</span> <span class="n">VER_IHL</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">IHL</span> <span class="o">=</span> <span class="n">VER_IHL</span> <span class="o">&amp;</span> <span class="mh">0x0F</span>
+
+    <span class="c1"># BYTE 2 &amp; 3</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">LENGTH</span> <span class="o">=</span> <span class="n">LEN</span>
+
+    <span class="c1"># BYTE 9</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">=</span> <span class="n">PROTO</span>
+
+    <span class="c1"># BYTE 12 &amp; 13</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">SOURCE</span> <span class="o">=</span> <span class="n">SOURCE</span>
+
+    <span class="c1"># BYTE 14 &amp; 15</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">DESTINATION</span> <span class="o">=</span> <span class="n">DEST</span>
+
+    <span class="n">options_len</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">IHL</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">:</span>
+        <span class="n">options_len</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IHL</span> <span class="o">-</span> <span class="mi">5</span><span class="p">)</span> <span class="o">*</span> <span class="mi">4</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">OPTIONS</span> <span class="o">=</span> <span class="n">LEFTOVER</span><span class="p">[:</span><span class="n">options_len</span><span class="p">]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">PAYLOAD</span> <span class="o">=</span> <span class="n">LEFTOVER</span><span class="p">[</span><span class="n">options_len</span><span class="p">:]</span>
+</code></pre></div></div></div>
+<h3 id="a-bit-of-color-in-my-life">A bit of Color in my Life<a class="headerlink" href="#a-bit-of-color-in-my-life" title="Permanent link"> </a></h3>
+<p>Let's plug our new IPV4 capabilities into our <code>sniffer.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span><span class="p">,</span> <span class="n">IPV4</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+    <span class="c1"># Ethernet</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+
+    <span class="c1"># IPV4</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">==</span> <span class="n">IPV4</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+        <span class="n">ipv4</span> <span class="o">=</span> <span class="n">IPV4</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"└─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">ipv4</span><span class="p">))</span>
+</code></pre></div></div></div>
+<p>Let's run it and visit google.com in our browser again:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>kali@kali:/tmp/blub$ sudo python3 sniffer.py
+<span class="o">[</span> Ethernet - 0x806 Address Resolution Protocol <span class="o">(</span>ARP<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">28</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x806 Address Resolution Protocol <span class="o">(</span>ARP<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">46</span> <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">280</span> <span class="o">]</span>
+└─ <span class="o">[</span> IPV4 - Proto: 0x6 TCP<span class="p">;</span> Source: <span class="m">10</span>.0.2.4<span class="p">;</span> Dest: <span class="m">172</span>.217.16.196 <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">83</span> <span class="o">]</span>
+└─ <span class="o">[</span> IPV4 - Proto: 0x6 TCP<span class="p">;</span> Source: <span class="m">10</span>.0.2.4<span class="p">;</span> Dest: <span class="m">172</span>.217.16.196 <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">52</span> <span class="o">]</span>
+└─ <span class="o">[</span> IPV4 - Proto: 0x6 TCP<span class="p">;</span> Source: <span class="m">172</span>.217.16.196<span class="p">;</span> Dest: <span class="m">10</span>.0.2.4 <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Dest: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Len: <span class="m">199</span> <span class="o">]</span>
+└─ <span class="o">[</span> IPV4 - Proto: 0x6 TCP<span class="p">;</span> Source: <span class="m">172</span>.217.16.196<span class="p">;</span> Dest: <span class="m">10</span>.0.2.4 <span class="o">]</span>
+<span class="o">[</span> Ethernet - 0x800 Internet Protocol version <span class="m">4</span> <span class="o">(</span>IPv4<span class="o">)</span><span class="p">;</span> Source: <span class="m">08</span>-00-27-7e-88-1f<span class="p">;</span> Dest: <span class="m">08</span>-00-27-a9-d9-62<span class="p">;</span> Len: <span class="m">52</span> <span class="o">]</span>
+└─ <span class="o">[</span> IPV4 - Proto: 0x6 TCP<span class="p">;</span> Source: <span class="m">10</span>.0.2.4<span class="p">;</span> Dest: <span class="m">172</span>.217.16.196 <span class="o">]</span>
+</code></pre></div></div></div>
+<p>It works, we can see my Kali VM (10.0.2.4) communicating with a google server (172.217.16.196).</p>
+<p>But this becomes a bit of a white snowstorm of text. Let us add some colors.</p>
+<p>Most modern terminals on Linux and Windows support colored text printing:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">kali</span><span class="nd">@kali</span><span class="p">:</span><span class="o">~</span><span class="err">$</span> <span class="n">python3</span>
+<span class="n">Python</span> <span class="mf">3.8</span><span class="o">.</span><span class="mi">3</span> <span class="p">(</span><span class="n">default</span><span class="p">,</span> <span class="n">May</span> <span class="mi">14</span> <span class="mi">2020</span><span class="p">,</span> <span class="mi">11</span><span class="p">:</span><span class="mi">03</span><span class="p">:</span><span class="mi">12</span><span class="p">)</span> 
+<span class="p">[</span><span class="n">GCC</span> <span class="mf">9.3</span><span class="o">.</span><span class="mi">0</span><span class="p">]</span> <span class="n">on</span> <span class="n">linux</span>
+<span class="n">Type</span> <span class="s2">"help"</span><span class="p">,</span> <span class="s2">"copyright"</span><span class="p">,</span> <span class="s2">"credits"</span> <span class="ow">or</span> <span class="s2">"license"</span> <span class="k">for</span> <span class="n">more</span> <span class="n">information</span><span class="o">.</span>
+<span class="o">&gt;&gt;&gt;</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">REDC</span> <span class="o">=</span> <span class="s1">'</span><span class="se">\33</span><span class="s1">[31m'</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ENDC</span> <span class="o">=</span> <span class="s1">'</span><span class="se">\033</span><span class="s1">[0m'</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="nb">print</span><span class="p">(</span><span class="s2">"Hello, "</span> <span class="o">+</span> <span class="n">REDC</span> <span class="o">+</span> <span class="s2">"I am red"</span> <span class="o">+</span> <span class="n">ENDC</span> <span class="o">+</span> <span class="s2">" and I am not anymore"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Terminal Colors Example" src="/assets/img/sniffer_20_colors.png"/></div></div></p>
+<p>You see, all it takes is putting text between two escaped control sequences. The first one sets the text color and the second one lets the terminal know you wish to return to normal.</p>
+<p>I have created a small colorizing script, so you don't have to:</p>
+<ul>
+<li><a href="https://gist.github.com/secoats/7bb2cc31bedbc50474bf2a79b9295226">Github Gist - colors.py</a></li>
+</ul>
+<p>Save this as <code>colors.py</code> in your working directory.</p>
+<p>Let us give our IPv4 packets a nice blue tint in <code>sniffer.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span><span class="p">,</span> <span class="n">IPV4</span>
+<span class="kn">from</span> <span class="nn">colors</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+    <span class="c1"># Ethernet</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+
+    <span class="c1"># IPV4</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">==</span> <span class="n">IPV4</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+        <span class="n">ipv4</span> <span class="o">=</span> <span class="n">IPV4</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">blue</span><span class="p">(</span><span class="s2">"└─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">ipv4</span><span class="p">)))</span>
+</code></pre></div></div></div>
+<p>Let's run that again:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Terminal Colors for IPV4 output" src="/assets/img/sniffer_22_colored_ipv4.png"/></div></div></p>
+<p>That's make it a bit easier to distinguish.</p>
+<h2 id="l4-udp">L4: UDP<a class="headerlink" href="#l4-udp" title="Permanent link"> </a></h2>
+<p>We move up another layer. We will start with <a href="https://en.wikipedia.org/wiki/User_Datagram_Protocol">UDP (User Datagram Protocol)</a> since the protocol is pleasantly simple.</p>
+<p>You know the drill at this point:</p>
+<table class="protocol">
+<thead>
+<th class="table-header" colspan="4">UDP Datagram Header</th>
+</thead>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 0</th>
+<th>Byte 1</th>
+<th>Byte 2</th>
+<th>Byte 3</th>
+</thead>
+<tr>
+<td colspan="2">Source Port</td>
+<td colspan="2">Destination Port</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 4</th>
+<th>Byte 5</th>
+<th>Byte 6</th>
+<th>Byte 7</th>
+</thead>
+<tr>
+<td colspan="2">Length</td>
+<td colspan="2">Checksum</td>
+</tr>
+</table>
+<p>The checksum is optional when used with IPv4 and mandatory when used with IPv6.<br/>
+The Source Port can be unused, but the Destination Port is required.</p>
+<p>Source Port and Checksum are all 0x00 if unused. So the length of the header should be consistent either way.</p>
+<p>The length field is for the total datagram (header + payload).</p>
+<p>Extend <code>ethernet_tools.py</code> again with our UDP class:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1"># ...</span>
+
+<span class="k">class</span> <span class="nc">UDP</span><span class="p">:</span>
+    <span class="n">ID</span> <span class="o">=</span> <span class="mh">0x11</span> <span class="c1"># IPv4 Protocol ID</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">LEFTOVER</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unpack_udp</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">SOURCE_PORT</span> <span class="o">=</span> <span class="n">SOURCE</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">DEST_PORT</span> <span class="o">=</span> <span class="n">DEST</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">LENGTH</span> <span class="o">=</span> <span class="n">LEN</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">CHECKSUM</span> <span class="o">=</span> <span class="n">CHKSUM</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">PAYLOAD</span> <span class="o">=</span> <span class="n">LEFTOVER</span>
+
+    <span class="k">def</span> <span class="nf">unpack_udp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s2">"! H H H H"</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">8</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">8</span><span class="p">:]</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"[ UDP - Source Port: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">SOURCE_PORT</span><span class="si">}</span><span class="s2">; Destination Port: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">DEST_PORT</span><span class="si">}</span><span class="s2">; LEN: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">LENGTH</span><span class="si">}</span><span class="s2"> ]"</span>
+</code></pre></div></div></div>
+<p>After wrestling with IPv4 this feels almost too easy.</p>
+<p>Let us include this in our <code>sniffer.py</code> with a nice yellow color:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span><span class="p">,</span> <span class="n">IPV4</span><span class="p">,</span> <span class="n">UDP</span>
+<span class="kn">from</span> <span class="nn">colors</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+    <span class="c1"># Ethernet</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+
+    <span class="c1"># IPV4</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">==</span> <span class="n">IPV4</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+        <span class="n">ipv4</span> <span class="o">=</span> <span class="n">IPV4</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">blue</span><span class="p">(</span><span class="s2">"└─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">ipv4</span><span class="p">)))</span>
+
+        <span class="c1"># UDP</span>
+        <span class="k">if</span> <span class="n">ipv4</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">==</span> <span class="n">UDP</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+            <span class="n">udp</span> <span class="o">=</span> <span class="n">UDP</span><span class="p">(</span><span class="n">ipv4</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">yellow</span><span class="p">(</span><span class="s2">"   └─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">udp</span><span class="p">)))</span>
+</code></pre></div></div></div>
+<p>We can trigger a UDP communication by performing a random DNS request to a public DNS server (e.g. 8.8.8.8 or 1.1.1.1).</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>kali@kali:~$ host -t txt <span class="m">8</span>.8.8.8
+<span class="m">8</span>.8.8.8.in-addr.arpa domain name pointer dns.google.
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="DNS UDP Datagrams" src="/assets/img/sniffer_30_udp.png"/></div></div></p>
+<p>This seems to have worked. The standard DNS server port is 53 by the way.</p>
+<h3 id="dumping-the-hexes">Dumping the Hexes<a class="headerlink" href="#dumping-the-hexes" title="Permanent link"> </a></h3>
+<p>It's probably overdue that we take a look at the actual content of our payloads.</p>
+<p>The problem is that the data sent via UDP or TCP is not always human readable.</p>
+<p>Therefore we will create a simple hex dump function.</p>
+<p>The requirements are simple enough:</p>
+<ol>
+<li>Print 16 bytes as hex</li>
+<li>Print the same 16 bytes, but as alphanumeric characters, or if they are not printable as dot "."</li>
+<li>Start a new line</li>
+<li>Repeat until you run out of bytes</li>
+</ol>
+<p>This should be easy enough if we remember that printable characters live in the integer range [32 - 126] and the python standard function <code>chr(i)</code> will turn your integer into a string character for you. The escape sequence for a new line is <code>"\n"</code>.</p>
+<p>We will add this function to <code>ethernet_tools.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1">#...</span>
+
+<span class="k">def</span> <span class="nf">hexdump</span><span class="p">(</span><span class="n">bytes_input</span><span class="p">,</span> <span class="n">left_padding</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">byte_width</span><span class="o">=</span><span class="mi">16</span><span class="p">):</span>
+    <span class="n">current</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">end</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">bytes_input</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="s2">""</span>
+
+    <span class="k">while</span> <span class="n">current</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">:</span>
+        <span class="n">byte_slice</span> <span class="o">=</span> <span class="n">bytes_input</span><span class="p">[</span><span class="n">current</span> <span class="p">:</span> <span class="n">current</span> <span class="o">+</span> <span class="n">byte_width</span><span class="p">]</span>
+
+        <span class="c1"># indentation</span>
+        <span class="n">result</span> <span class="o">+=</span> <span class="s2">" "</span> <span class="o">*</span> <span class="n">left_padding</span>
+
+        <span class="c1"># hex section</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">byte_slice</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="s2">"</span><span class="si">%02X</span><span class="s2"> "</span> <span class="o">%</span> <span class="n">b</span>
+
+        <span class="c1"># filler</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">byte_width</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">byte_slice</span><span class="p">)):</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="s2">" "</span> <span class="o">*</span> <span class="mi">3</span>
+        <span class="n">result</span> <span class="o">+=</span> <span class="s2">"  "</span>
+
+        <span class="c1"># printable character section</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">byte_slice</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">b</span> <span class="o">&gt;=</span> <span class="mi">32</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">b</span> <span class="o">&lt;</span> <span class="mi">127</span><span class="p">):</span>
+                <span class="n">result</span> <span class="o">+=</span> <span class="nb">chr</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">+=</span> <span class="s2">"."</span>
+
+        <span class="n">result</span> <span class="o">+=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+        <span class="n">current</span> <span class="o">+=</span> <span class="n">byte_width</span>
+
+    <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></div></div>
+<p>Plug that into our <code>sniffer.py</code> again:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span><span class="p">,</span> <span class="n">IPV4</span><span class="p">,</span> <span class="n">UDP</span><span class="p">,</span> <span class="n">hexdump</span>
+<span class="kn">from</span> <span class="nn">colors</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+    <span class="c1"># Ethernet</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+
+    <span class="c1"># IPV4</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">==</span> <span class="n">IPV4</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+        <span class="n">ipv4</span> <span class="o">=</span> <span class="n">IPV4</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">blue</span><span class="p">(</span><span class="s2">"└─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">ipv4</span><span class="p">)))</span>
+
+        <span class="c1"># UDP</span>
+        <span class="k">if</span> <span class="n">ipv4</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">==</span> <span class="n">UDP</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+            <span class="n">udp</span> <span class="o">=</span> <span class="n">UDP</span><span class="p">(</span><span class="n">ipv4</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">yellow</span><span class="p">(</span><span class="s2">"   └─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">udp</span><span class="p">)))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">yellow</span><span class="p">(</span><span class="n">hexdump</span><span class="p">(</span><span class="n">udp</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="UDP Payload Hexdump" src="/assets/img/sniffer_35_udp_hexdump.png"/></div></div></p>
+<p>Looks like we are getting somewhere.</p>
+<h2 id="l4-tcp">L4: TCP<a class="headerlink" href="#l4-tcp" title="Permanent link"> </a></h2>
+<p><a href="https://en.wikipedia.org/wiki/Transmission_Control_Protocol">TCP (Transmission Control Protocol)</a> is probably the most common protocol for communicating via IPv4. And also quite a bit more complex than UDP.</p>
+<p>Here is the Byte Table for the TCP header:</p>
+<table class="protocol">
+<thead>
+<th class="table-header" colspan="4">TCP Segment Header</th>
+</thead>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 0</th>
+<th>Byte 1</th>
+<th>Byte 2</th>
+<th>Byte 3</th>
+</thead>
+<tr>
+<td colspan="2">Source Port</td>
+<td colspan="2">Destination Port</td>
+</tr>
+</table>
+<table class="protocol">
+<thead style="border-top:2px solid #aaa;">
+<th>Byte 4</th>
+<th>Byte 5</th>
+<th>Byte 6</th>
+<th>Byte 7</th>
+</thead>
+<tr>
+<td colspan="4">Sequence number</td>
+</tr>
+</table>
+<table class="protocol">
+<thead style="border-top:2px solid #aaa;">
+<th>Byte 8</th>
+<th>Byte 9</th>
+<th>Byte 10</th>
+<th>Byte 11</th>
+</thead>
+<tr>
+<td colspan="4">Acknowledgment number (if ACK set)</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 12</th>
+<th>Byte 13</th>
+<th>Byte 14</th>
+<th>Byte 15</th>
+</thead>
+<tr>
+<td colspan="2">Data Offset &amp; Flags</td>
+<td colspan="2">Window Size</td>
+</tr>
+</table>
+<table class="protocol">
+<thead>
+<th>Byte 16</th>
+<th>Byte 17</th>
+<th>Byte 18</th>
+<th>Byte 19</th>
+</thead>
+<tr>
+<td colspan="2">Checksum</td>
+<td colspan="2">Urgent pointer (if URG set)</td>
+</tr>
+</table>
+<table class="protocol">
+<tr>
+<td colspan="4">More bytes are used for Options if Data Offset &gt; 5, otherwise the payload starts here directly.</td>
+</tr>
+</table>
+<p>This seems eerily similar to IPv4, especially the optional Options field.</p>
+<p>But unlike IPv4 there is only one field that contains smaller fields that do not follow exact byte borders: Data Offset &amp; Flags.</p>
+<table class="protocol">
+<thead>
+<th colspan="8">Byte 12</th>
+<th colspan="8">Byte 13</th>
+</thead>
+<thead>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+<th>8</th>
+<th>9</th>
+<th>10</th>
+<th>11</th>
+<th>12</th>
+<th>13</th>
+<th>14</th>
+<th>15</th>
+</thead>
+<tr>
+<td colspan="4">Data Offset</td>
+<td colspan="3">Reserved<br/>(0 0 0)</td>
+<td>N<br/>S</td>
+<td>C<br/>W<br/>R</td>
+<td>E<br/>C<br/>E</td>
+<td>U<br/>R<br/>G</td>
+<td>A<br/>C<br/>K</td>
+<td>P<br/>S<br/>H</td>
+<td>R<br/>S<br/>T</td>
+<td>S<br/>Y<br/>N</td>
+<td>F<br/>I<br/>N</td>
+</tr>
+</table>
+<p>We can use bit-shifting again in order to get these flags and the Offset. Flags are only one bit each, so we can use the AND mask <code>0x01</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">FIN</span> <span class="o">=</span> <span class="n">OFFSET_FLAGS</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">SYN</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">RST</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">PSH</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">ACK</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">URG</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">ECE</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">6</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">CWR</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+<span class="n">NS</span> <span class="o">=</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span>
+
+<span class="n">OFFSET</span> <span class="o">=</span> <span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">12</span>     <span class="c1"># 4 Bits</span>
+</code></pre></div></div></div>
+<p>Since each flag is only one bit (False = 0 or True = 1), we can turn them into booleans if we want:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">SYN</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">)</span>
+</code></pre></div></div></div>
+<p>We will store these booleans in a dictionary for convenience. If you want to save space, then you can just keep them in the original integer and extract them whenever needed, but in this tutorial we go the lazy route and actually store them.</p>
+<p>Here is our Flags dictionary:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="bp">self</span><span class="o">.</span><span class="n">FLAGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"FIN"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="n">OFFSET_FLAGS</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"SYN"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"RST"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"PSH"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"ACK"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"URG"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"ECE"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">6</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"CWR"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+    <span class="s2">"NS"</span> <span class="p">:</span>  <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div></div>
+<p>With the Flags and Offset figured out, we can hack together a TCP class with parts of our already existing IPV4 and UDP classes:</p>
+<p>In <code>ethernet_tools.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1">#...</span>
+<span class="k">class</span> <span class="nc">TCP</span><span class="p">:</span>
+    <span class="n">ID</span> <span class="o">=</span> <span class="mh">0x06</span> <span class="c1"># IPv4 Protocol ID</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">SRC</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">SEQ</span><span class="p">,</span> <span class="n">ACK_NUM</span><span class="p">,</span> <span class="n">OFFSET_FLAGS</span><span class="p">,</span> <span class="n">WIN_SIZE</span><span class="p">,</span> \
+            <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">URG_PTR</span><span class="p">,</span> <span class="n">LEFTOVER</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unpack_tcp</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="c1"># Byte 0 &amp; 1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">SOURCE_PORT</span> <span class="o">=</span> <span class="n">SRC</span>
+
+        <span class="c1"># Byte 2 &amp; 3</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">DEST_PORT</span> <span class="o">=</span> <span class="n">DEST</span>
+
+        <span class="c1"># Bytes 4, 5, 6, 7</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">SEQUENCE_NUM</span> <span class="o">=</span> <span class="n">SEQ</span>
+
+        <span class="c1"># Bytes 8, 9, 10, 11</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ACK_NUM</span> <span class="o">=</span> <span class="n">ACK_NUM</span>
+
+        <span class="c1"># Bytes 12 &amp; 13</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">FLAGS</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">"FIN"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="n">OFFSET_FLAGS</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"SYN"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"RST"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"PSH"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"ACK"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"URG"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"ECE"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">6</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"CWR"</span> <span class="p">:</span> <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">),</span>
+            <span class="s2">"NS"</span> <span class="p">:</span>  <span class="nb">bool</span><span class="p">(</span> <span class="p">(</span><span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x01</span> <span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">OFFSET</span> <span class="o">=</span> <span class="n">OFFSET_FLAGS</span> <span class="o">&gt;&gt;</span> <span class="mi">12</span>
+
+        <span class="c1"># Byte 14 &amp; 15</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">WINDOW_SIZE</span> <span class="o">=</span> <span class="n">WIN_SIZE</span>
+
+        <span class="c1"># Byte 16 &amp; 17</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">CHECKSUM</span> <span class="o">=</span> <span class="n">CHKSUM</span>
+
+        <span class="c1"># Byte 18 &amp; 19</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">URGENT_POINTER</span> <span class="o">=</span> <span class="n">URG_PTR</span>
+
+        <span class="n">options_len</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">OFFSET</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="n">options_len</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">OFFSET</span> <span class="o">-</span> <span class="mi">5</span><span class="p">)</span> <span class="o">*</span> <span class="mi">4</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">PARAMS</span> <span class="o">=</span> <span class="n">LEFTOVER</span><span class="p">[:</span><span class="n">options_len</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">PAYLOAD</span> <span class="o">=</span> <span class="n">LEFTOVER</span><span class="p">[</span><span class="n">options_len</span><span class="p">:]</span>
+
+    <span class="k">def</span> <span class="nf">unpack_tcp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">SRC</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">SEQ</span><span class="p">,</span> <span class="n">ACK_NUM</span><span class="p">,</span> <span class="n">OFFSET_FLAGS</span><span class="p">,</span> <span class="n">WIN_SIZE</span><span class="p">,</span> \
+            <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">URG_PTR</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s2">"! H H I I H H H H"</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">20</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">SRC</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">SEQ</span><span class="p">,</span> <span class="n">ACK_NUM</span><span class="p">,</span> <span class="n">OFFSET_FLAGS</span><span class="p">,</span> <span class="n">WIN_SIZE</span><span class="p">,</span> \
+            <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">URG_PTR</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">20</span><span class="p">:]</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">active_flags</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">FLAGS</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">FLAGS</span><span class="p">[</span><span class="n">key</span><span class="p">]:</span>
+                <span class="n">active_flags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+        <span class="n">flags_str</span> <span class="o">=</span> <span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">active_flags</span><span class="p">)</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="s2">"[ TCP - "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"Source Port: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">SOURCE_PORT</span><span class="si">}</span><span class="s2">; "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"Destination Port: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">DEST_PORT</span><span class="si">}</span><span class="s2">; "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"Flags: (</span><span class="si">{</span><span class="n">flags_str</span><span class="si">}</span><span class="s2">); "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"Sequence: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">SEQUENCE_NUM</span><span class="si">}</span><span class="s2">; "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"ACK_NUM: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ACK_NUM</span><span class="si">}</span><span class="s2"> "</span>
+        <span class="n">res</span> <span class="o">+=</span> <span class="s2">"]"</span>
+
+        <span class="k">return</span> <span class="n">res</span>
+</code></pre></div></div></div>
+<p>In <code>sniffer.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">ethernet_tools</span> <span class="kn">import</span> <span class="n">EthernetFrame</span><span class="p">,</span> <span class="n">IPV4</span><span class="p">,</span> <span class="n">UDP</span><span class="p">,</span> <span class="n">TCP</span><span class="p">,</span> <span class="n">hexdump</span>
+<span class="kn">from</span> <span class="nn">colors</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">ETH_P_ALL</span> <span class="o">=</span> <span class="mh">0x03</span> <span class="c1"># Listen for everything</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_PACKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_RAW</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">htons</span><span class="p">(</span><span class="n">ETH_P_ALL</span><span class="p">))</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+    <span class="c1"># Ethernet</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+
+    <span class="c1"># IPV4</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">ETHER_TYPE</span> <span class="o">==</span> <span class="n">IPV4</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+        <span class="n">ipv4</span> <span class="o">=</span> <span class="n">IPV4</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">blue</span><span class="p">(</span><span class="s2">"└─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">ipv4</span><span class="p">)))</span>
+
+        <span class="c1"># UDP</span>
+        <span class="k">if</span> <span class="n">ipv4</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">==</span> <span class="n">UDP</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+            <span class="n">udp</span> <span class="o">=</span> <span class="n">UDP</span><span class="p">(</span><span class="n">ipv4</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">yellow</span><span class="p">(</span><span class="s2">"   └─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">udp</span><span class="p">)))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">yellow</span><span class="p">(</span><span class="n">hexdump</span><span class="p">(</span><span class="n">udp</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
+
+        <span class="c1"># TCP</span>
+        <span class="k">elif</span> <span class="n">ipv4</span><span class="o">.</span><span class="n">PROTOCOL</span> <span class="o">==</span> <span class="n">TCP</span><span class="o">.</span><span class="n">ID</span><span class="p">:</span>
+            <span class="n">tcp</span> <span class="o">=</span> <span class="n">TCP</span><span class="p">(</span><span class="n">ipv4</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">green</span><span class="p">(</span><span class="s2">"   └─ "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">tcp</span><span class="p">)))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">green</span><span class="p">(</span><span class="n">hexdump</span><span class="p">(</span><span class="n">tcp</span><span class="o">.</span><span class="n">PAYLOAD</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
+</code></pre></div></div></div>
+<p>That should do it.</p>
+<p>For instance, now we can capture the entirety of an HTTP communication.</p>
+<p>Let's send an HTTP request to the W3C website:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="nb">echo</span> -e <span class="s2">"GET / HTTP/1.0\r\n\r\n"</span> <span class="p">|</span> nc www.w3.org <span class="m">80</span>
+</code></pre></div></div></div>
+<p>This is how the capture looks like:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Sniffing UDP and TCP" src="/assets/img/sniffer_60_tcp_full.png"/></div></div></p>
+<p>Seems to work!</p>
+<p>Comparing the header values and payloads in Wireshark shows that our parsing appears to be accurate.</p>
+<p>That's about as far as we will go in this tutorial when it comes to protocols.</p>
+<h2 id="improvements-and-some-use-cases">Improvements and Some Use Cases<a class="headerlink" href="#improvements-and-some-use-cases" title="Permanent link"> </a></h2>
+<p>That concludes this tutorial, but here are some afterthoughts.</p>
+<p>Of course you can implement data structures for some other common protocols. But the problem we now have is rather too much information. </p>
+<p>So building some filters to only display certain protocols and network interfaces would be a good idea. You could add some <a href="https://docs.python.org/3/library/argparse.html">command line options</a> in order to control the output. </p>
+<p>And we have done absolutely zero error handling so far. I would recommend simply discarding any Ethernet Frame that causes an error and move on to the next iteration:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">raw_data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">65565</span><span class="p">)</span>
+
+        <span class="c1"># Ethernet</span>
+        <span class="n">frame</span> <span class="o">=</span> <span class="n">EthernetFrame</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+        <span class="c1"># ...</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">red</span><span class="p">(</span><span class="s2">"[ Error: Failed To Parse Frame Data]"</span><span class="p">))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">red</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)))</span>
+</code></pre></div></div></div>
+<p>It might also be worthwhile to create the option to assemble TCP segments to get the complete message and log them to output files.</p>
+<h3 id="sniffing-for-info">Sniffing for Info<a class="headerlink" href="#sniffing-for-info" title="Permanent link"> </a></h3>
+<p>One easy thing we can do is automatically search TCP/UDP payloads for certain byte sequences or clear text strings, for instance our favorite one: "password". </p>
+<p>You might want to search for all common character encodings and not just look for the UTF-8 version.</p>
+<p>If you want to search for several byte sequences or strings at the same time, then I recommend using something like the <a href="https://en.wikipedia.org/wiki/Aho%E2%80%93Corasick_algorithm">Aho–Corasick algorithm</a>.</p>
+<h3 id="man-in-the-middle">Man-in-the-Middle<a class="headerlink" href="#man-in-the-middle" title="Permanent link"> </a></h3>
+<p>It should be easy to extend our data structures so they can be turned back into valid byte sequences. <code>struct</code> works in both directions:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">unpack_udp</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s2">"! H H H H"</span><span class="p">,</span> <span class="n">data</span><span class="p">[:</span><span class="mi">8</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="mi">8</span><span class="p">:]</span>
+
+<span class="k">def</span> <span class="nf">pack_udp</span><span class="p">(</span><span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"! H H H H"</span><span class="p">,</span> <span class="n">SOURCE</span><span class="p">,</span> <span class="n">DEST</span><span class="p">,</span> <span class="n">LEN</span><span class="p">,</span> <span class="n">CHKSUM</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">header</span> <span class="o">+</span> <span class="n">data</span>
+</code></pre></div></div></div>
+<p>Most of the time you will have to recalculate the header checksums though, if you change any of the headers or payloads.</p>
+<p>You can use this as the basis for a Spoofing attack (e.g. <a href="https://en.wikipedia.org/wiki/ARP_spoofing">ARP spoofing</a>).</p>
+<h3 id="silent-profiling">Silent Profiling<a class="headerlink" href="#silent-profiling" title="Permanent link"> </a></h3>
+<p>You can create profiles of machines in the neighborhood.</p>
+<p>Keep track of MAC Addresses and associate IP Addresses and open Port numbers with them. This might be an alternative to noisy port scanners. </p>
+<p>Due to switching, this might be not very effective though, unless you use some kind of spoofing. Wireless LAN is a different can of worms that I won't open here.</p>
+<h2 id="fin-ack">FIN ACK<a class="headerlink" href="#fin-ack" title="Permanent link"> </a></h2>
+<p>Well that's it, have fun!</p>
+<p>Here are all the files:</p>
+<ul>
+<li><a href="https://gist.github.com/secoats/7bb2cc31bedbc50474bf2a79b9295226">colors.py</a></li>
+<li><a href="https://gist.github.com/secoats/991d4d586dd39dad258ca02e046948e3">network_constants.py</a></li>
+<li><a href="https://gist.github.com/secoats/b8513c43044441742981ad7ee4cfcb12">ethernet_tools.py</a></li>
+<li><a href="https://gist.github.com/secoats/669f03081b0115fee6635052531689f8">sniffer.py</a></li>
+</ul>
+<p>Or summarized as a <a href="https://github.com/secoats/agora_network_sniffer/tree/tutorial">Github repository (branch "tutorial")</a>.</p>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=Tutorial%3A%20Build%20a%20Network%20Sniffer%20From%20Scratch%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fethernet_sniffer.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fethernet_sniffer.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fethernet_sniffer.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#programming" class="article-tag" rel="tag">programming</a><span class="sep"> </span>
+                                <a href="/tags.html#python" class="article-tag" rel="tag">python</a><span class="sep"> </span>
+                                <a href="/tags.html#pentesting" class="article-tag" rel="tag">pentesting</a><span class="sep"> </span>
+                                <a href="/tags.html#tools" class="article-tag" rel="tag">tools</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#tutorial" class="article-tag" rel="tag">tutorial</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2020-12-08 15:34:30-04:00">December 08, 2020</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-02-22 13:34:30-04:00">February 22, 2021</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

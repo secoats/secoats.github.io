@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats</title>
+        <link rel="canonical" href="https://secoats.github.io/" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="website" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="secoats" />
+        <meta property="og:url" content="https://secoats.github.io/" />
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+                        <a href="/categories.html#writeups">Writeups</a>
+                        <a href="/categories.html#tutorials">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+
+            <div class="wrapper" style="background-color:#eee; background-image:url(/assets/img/sky_plain.jpg); padding:25px; box-sizing: border-box;">
+
+                <div class="pseudo-terminal" style="margin:0;">
+                    <div id="pseudo-terminal-results"></div>
+                    <form>
+                        <input id="pseudo-terminal-input" type="text" placeholder="Try typing help..." autocomplete="off">
+                    </form>
+                </div>
+            
+            </div>
+
+            <main id="content" class="wrapper">
+                <div class="mbox">
+
+                    <h2>Recent Posts</h2>
+                    <hr>
+
+                    <article class="archive__item" itemscope="" itemtype="https://schema.org/CreativeWork">
+                        <h2 class="archive__item-title no_toc" itemprop="headline">
+                            <a href="/tutorial/ethernet_sniffer/" rel="permalink">Tutorial: Build a Network Sniffer From Scratch</a>      
+                        </h2>
+                      <!--<p class="page__meta">
+                          <span class="page__meta-readtime">
+                            <i class="far fa-clock" aria-hidden="true"></i>
+                              26 minute read
+                          </span>
+                      </p>-->
+                      <p class="article-subline" style="margin-bottom:0px;">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 26 minute read</span> - <span class="article-meta-published"> December 08, 2020</span>
+                      </p>
+                    <p class="archive__item-excerpt" itemprop="description">A sniffer allows you to intercept and log traffic that reaches your host from the network.
+                    
+                    If you are just looking for a good sniffer, then you should proba...</p>
+                    </article>
+
+
+
+                    <article class="archive__item" itemscope="" itemtype="https://schema.org/CreativeWork">
+    
+                        <h2 class="archive__item-title no_toc" itemprop="headline">
+                            <a href="/tutorial/pyinstaller/" rel="permalink">Tutorial: Create Binary Versions of Python Tools</a>
+                        </h2>
+                      <!--<p class="page__meta">
+                          <span class="page__meta-readtime">
+                            <i class="far fa-clock" aria-hidden="true"></i>
+                            
+                              4 minute read
+                          </span>
+                      </p>-->
+                      <p class="article-subline" style="margin-bottom:0px;">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 5 minute read</span> - <span class="article-meta-published"> December 08, 2020</span>
+                      </p>
+                        <p class="archive__item-excerpt" itemprop="description">With PyInstaller you can create stand-alone binaries that run on machines that do not have Python installed.
+                    On Linux it will create an executable ELF binar...</p>
+                      </article>
+                    
+                    
+                </div>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+                            <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+                            <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+                            <li><a href="#" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+                        </ul>
+                        <div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+        <script src="/assets/js/terminal.js"></script>
+    </body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | Vulnserver Part 0 - Overview</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/vulnserver_0_overview.html" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="Vulnserver Part 0 - Overview" />
+        <meta property="og:url" content="https://secoats.github.io/posts/vulnserver_0_overview.html" />
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">Vulnserver Part 0 - Overview</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 4 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
+                    </p>
+                    <p>Vulnserver is a vulnerable TCP socket server written in C. You can use it to practise Windows x86 stack based buffer overflows. </p>
+<p><a href="https://github.com/stephenbradshaw/vulnserver">You can get it over here on github</a>.</p>
+<p>The server application offers several different buffer overflows for you to exploit. If you run the server on a Windows machine and connect to it via netcat, then you can see the available buffer overflows by typing the HELP command followed by pressing enter:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ nc <span class="m">10</span>.0.2.74 <span class="m">9999</span>
+Welcome to Vulnerable Server! Enter HELP <span class="k">for</span> help.
+HELP
+Valid Commands:
+HELP
+STATS <span class="o">[</span>stat_value<span class="o">]</span>
+RTIME <span class="o">[</span>rtime_value<span class="o">]</span>
+LTIME <span class="o">[</span>ltime_value<span class="o">]</span>
+SRUN <span class="o">[</span>srun_value<span class="o">]</span>
+TRUN <span class="o">[</span>trun_value<span class="o">]</span>
+GMON <span class="o">[</span>gmon_value<span class="o">]</span>
+GDOG <span class="o">[</span>gdog_value<span class="o">]</span>
+KSTET <span class="o">[</span>kstet_value<span class="o">]</span>
+GTER <span class="o">[</span>gter_value<span class="o">]</span>
+HTER <span class="o">[</span>hter_value<span class="o">]</span>
+LTER <span class="o">[</span>lter_value<span class="o">]</span>
+KSTAN <span class="o">[</span>lstan_value<span class="o">]</span>
+EXIT
+</code></pre></div></div></div>
+<p>Here is an overview of the ones I have explored:</p>
+<ul>
+<li><a href="/posts/vulnserver_1_trun.html">TRUN - Simple stack based buffer overflow with a little fuzzing</a></li>
+<li>GMON - Structured Exception Handler (SEH)</li>
+<li>HTER - The input gets mangled</li>
+<li>KSTET - Egg Hunting</li>
+<li>GTER - More Egg Hunting</li>
+<li>LTER - Bad Char Galore</li>
+</ul>
+<p>The TRUN command is probably the easiest of the available buffer overflows. So that is where we will start.</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link"> </a></h2>
+<p>In the text below I will describe an example network lab setup and give an overview of the Immunity Debugger. You can skip all of this if you already have a home lab and know how to use a debugger.</p>
+<h3 id="virtual-machines">Virtual Machines<a class="headerlink" href="#virtual-machines" title="Permanent link"> </a></h3>
+<p>We will use a Linux Virtual Machine as our attack machine (I used <a href="https://www.kali.org/">Kali Linux</a>) and a Windows 10 VM as the target. We will run the vulnserver and the debugger on that Windows VM. I used <a href="https://www.virtualbox.org/">VirtualBox</a> in order to set up my lab environment, but you can also use VMware or any other hypervisor.</p>
+<p><em>Obligatory Disclaimer:</em> Make sure to only run vulnserver in your own home lab. We are obviously creating a vulnerable machine here. If you and me can exploit it, then so can others.</p>
+<p>You can get <a href="https://developer.microsoft.com/en-us/windows/downloads/virtual-machines/">free Windows 10 VMs for developers on the Microsoft Website</a>. These VMs expire after 90 days starting with the first boot, so make sure to create a snapshot before starting the VM for the first time. </p>
+<p>The default credentials are: </p>
+<ul>
+<li>user: <code>IEUser</code></li>
+<li>pass: <code>Passw0rd!</code></li>
+</ul>
+<p>It is a good idea to deactivate Windows Defender and the Windows Firewall after starting the VM. Antivirus evasion is not part of this tutorial. Beware that the real-time protection will enable itself again after the next reboot.</p>
+<p>Please make sure that the two VMs have valid IP addresses configured and can communicate with one another.</p>
+<h3 id="debugger">Debugger<a class="headerlink" href="#debugger" title="Permanent link"> </a></h3>
+<p>We will use <strong>Immunity Debugger</strong> in order to debug the vulnserver while we exploit it. The debugger allows us to see what exactly happens on the stack. This debugger is also used in the OSCP PWK course.</p>
+<p>When you <a href="https://debugger.immunityinc.com/ID_register.py">download Immunity Debugger</a> it will ask you for your personal info, but you can just enter generic gibberish and press <code>download</code>. The download should then start immediately.</p>
+<ul>
+<li>Install Immunity Debugger on the Windows VM</li>
+<li>Do <strong>not</strong> install the Python 2.7 that comes with Immunity, but rather the most recent version (at the time of writing it was 2.7.18). Make sure you install the x86 (32bit) version.</li>
+<li><a href="https://github.com/corelan/mona">Download mona.py</a> and copy it into: <code>"C:\Program Files (x86)\Immunity Inc\PyCommand\"</code></li>
+<li><a href="https://github.com/stephenbradshaw/vulnserver">Download vulnserver.exe</a> (don't forget to also download the essfunc.dll file)</li>
+</ul>
+<p>The <code>mona.py</code> file adds useful new functions to Immunity that are geared specifically towards binary exploitation.</p>
+<p>On your Linux VM set up the samba server. We will use it for convenient file transfers between the two machines. </p>
+<p>Newer versions of Windows 10 block guest login shares (anonymous login without password) by default, so either set a password on your SMB share or <a href="https://docs.microsoft.com/en-us/troubleshoot/windows-server/networking/guest-access-in-smb2-is-disabled-by-default#resolution">deactivate this security feature</a> on the Windows VM.</p>
+<p>We will write our exploits in Python3. It should come pre-installed on most modern distros and definitely does on Kali Linux.</p>
+<h4 id="running-immunity">Running Immunity<a class="headerlink" href="#running-immunity" title="Permanent link"> </a></h4>
+<p>Start Immunity on the Windows VM. </p>
+<p><code>File</code> -&gt; <code>Open</code> -&gt; Select <code>vulnserver.exe</code> in the file explorer</p>
+<p>Press the Start button (or press F9)</p>
+<p>A terminal should open with the following message:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">Starting</span> <span class="n">vulnserver</span> <span class="k">version</span> <span class="mi">1</span><span class="p">.</span><span class="mi">00</span>
+<span class="k">Called</span> <span class="n">essential</span> <span class="k">function</span> <span class="n">dll</span> <span class="k">version</span> <span class="mi">1</span><span class="p">.</span><span class="mi">00</span>
+
+<span class="n">This</span> <span class="k">is</span> <span class="n">vulnerable</span> <span class="n">software</span><span class="o">!</span>
+<span class="k">Do</span> <span class="k">not</span> <span class="n">allow</span> <span class="k">access</span> <span class="k">from</span> <span class="n">untrusted</span> <span class="n">systems</span> <span class="k">or</span> <span class="n">networks</span><span class="o">!</span>
+
+<span class="n">Waiting</span> <span class="k">for</span> <span class="n">client</span> <span class="n">connections</span><span class="p">...</span>
+</code></pre></div></div></div>
+<p>If it crashes on start, then you probably forgot to put the <code>essfunc.dll</code> file in the same directory as the <code>vulnserver.exe</code> binary.</p>
+<p>The vulnserver will listen on TCP port <code>9999</code> for incomming connections.</p>
+<h4 id="common-immunity-commands">Common Immunity Commands<a class="headerlink" href="#common-immunity-commands" title="Permanent link"> </a></h4>
+<p>You can unpause/pause the running execution using the <code>&lt;F9&gt;</code> button on your keyboard.</p>
+<p>You will often have to set a Breakpoint. <code>&lt;F2&gt;</code> toggles a breakpoint on the selected address.</p>
+<p>If you are in paused mode (after hitting a breakpoint for example), then you can step through the next commands individually with <code>&lt;F7&gt;</code>.</p>
+<p>If you want to jump to a specific address in order to look at the code/data or set a breakpoint on it, then you can do so with the Black Arrow button in the menubar. In the pop-up window enter the address in hexadecimal (without 0x in front) and it should jump to your desired address.</p>
+<p>If you are doing an SEH based buffer overflow and the debugger stopped on an exception, then you can resume execution using <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code></p>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=Vulnserver%20Part%200%20-%20Overview%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_0_overview.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_0_overview.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_0_overview.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#vulnserver" class="article-tag" rel="tag">vulnserver</a><span class="sep"> </span>
+                                <a href="/tags.html#windows" class="article-tag" rel="tag">windows</a><span class="sep"> </span>
+                                <a href="/tags.html#bufferoverflow" class="article-tag" rel="tag">bufferoverflow</a><span class="sep"> </span>
+                                <a href="/tags.html#binary" class="article-tag" rel="tag">binary</a><span class="sep"> </span>
+                                <a href="/tags.html#exploit" class="article-tag" rel="tag">exploit</a><span class="sep"> </span>
+                                <a href="/tags.html#bof" class="article-tag" rel="tag">bof</a><span class="sep"> </span>
+                                <a href="/tags.html#overview" class="article-tag" rel="tag">overview</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#writeup" class="article-tag" rel="tag">writeup</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2021-09-07 12:00:00-04:00">September 07, 2021</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-07 12:00:00-04:00">September 07, 2021</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

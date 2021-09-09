@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | {{article_title}}</title>
+        <link rel="canonical" href="{{permalink}}" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="{{article_title}}" />
+        <meta property="og:url" content="{{permalink}}" />
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        {{navigation}}
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">{{article_title}}</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> {{article_reading_time}} minute read</span> - <span class="article-meta-published">{{article_published}}</span>
+                    </p>
+                    {{article_content}}
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="{{twitter_share}}" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="{{facebook_share}}" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="{{linkedin_share}}" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                            {%- for tag in article_tags %}
+                                <a href="/tags.html#{{tag}}" class="article-tag" rel="tag">{{tag}}</a><span class="sep"> </span>
+                            {%- endfor %}
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                            {%- for cat in article_categories %}
+                                <a href="/categories.html#{{cat}}" class="article-tag" rel="tag">{{cat}}</a>
+                            {%- endfor %}
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="{{article_published_raw}}">{{article_published}}</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="{{article_updated_raw}}">{{article_updated}}</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        {{footer}}
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>
