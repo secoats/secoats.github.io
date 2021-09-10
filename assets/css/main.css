@@ -353,7 +353,7 @@ p > code, li > code {
 }
 
 pre {
-    font-family:Monaco, Bitstream Vera Sans Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+    font-family:Monaco, Bitstream Vera Sans Mono, Fira Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
     font-size:0.9em;
     overflow-x:auto;
     box-sizing: border-box;
@@ -361,7 +361,7 @@ pre {
 }
 
 code {
-    font-family:Monaco, Bitstream Vera Sans Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+    font-family:Monaco, Bitstream Vera Sans Mono, Fira Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
     font-size:0.9em;
 }
 
