@@ -216,7 +216,7 @@ footer {
 
 .footer-info {
 
-    margin:40px 75px;
+    margin:30px 75px;
 }
 
 footer a {
@@ -267,6 +267,12 @@ ul.social-icons li {
     text-decoration: none;
 }
 
+.btn--twitter:visited {
+    background-color: #55acee;
+    color: rgb(255, 255, 255);
+    text-decoration: none;
+}
+
 .btn--facebook {
     background-color: #3b5998;
     color: #fff;
@@ -279,6 +285,12 @@ ul.social-icons li {
     text-decoration: none;
 }
 
+.btn--facebook:visited {
+    background-color: #3b5998;
+    color: #fff;
+    text-decoration: none;
+}
+
 .btn--linkedin {
     background-color: #007bb6;
     color: #fff;
@@ -287,6 +299,12 @@ ul.social-icons li {
 
 .btn--linkedin:hover {
     background-color: #006292;
+    color: #fff;
+    text-decoration: none;
+}
+
+.btn--linkedin:visited {
+    background-color: #007bb6;
     color: #fff;
     text-decoration: none;
 }
@@ -326,6 +344,13 @@ ul.social-icons li {
         margin-bottom:0px;
     }
 }
+
+@media (max-width: 30em) {
+    .terminal-desktop {
+        display: none;
+    }
+}
+
 
 @media (min-width: 48em) {
     html {
@@ -537,7 +562,9 @@ table.protocol td.stripes-bg {
 }
 
 
-
+.terminal-desktop {
+    background-color:#eee; background-image:url(/assets/img/sky_plain.jpg); padding:25px; box-sizing: border-box;
+}
 
 
 .pseudo-terminal{
@@ -596,6 +623,11 @@ table.protocol td.stripes-bg {
 #pseudo-terminal-results pre {
     padding-bottom:10px;
     margin:0;
+    white-space: pre-wrap;
+    white-space: -moz-pre-wrap;
+    white-space: -pre-wrap;
+    white-space: -o-pre-wrap;
+    word-wrap: break-word;
 }
 
 #pseudo-terminal-results a:hover{
@@ -613,7 +645,7 @@ table.protocol td.stripes-bg {
     padding: 18px;
     font-size: 14px;
     outline: none;
-    font-family: 'Roboto Mono', monospace;
+    font-family: 'Bitstream Vera Sans Mono', 'Fira Mono', 'Roboto Mono', monospace;
     box-sizing: border-box;
 }
 

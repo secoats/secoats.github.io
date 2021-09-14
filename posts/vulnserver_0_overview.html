@@ -37,7 +37,7 @@
                 <article class="mbox">
                     <h1 class="article-headline">Vulnserver Part 0 - Overview</h1>
                     <p class="article-subline">
-                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 4 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 5 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
                     </p>
                     <p>Vulnserver is a vulnerable TCP socket server written in C. You can use it to practise Windows x86 stack based buffer overflows. </p>
 <p><a href="https://github.com/stephenbradshaw/vulnserver">You can get it over here on github</a>.</p>
@@ -64,7 +64,7 @@ EXIT
 <p>Here is an overview of the ones I have explored:</p>
 <ul>
 <li><a href="/posts/vulnserver_1_trun.html">TRUN - Simple stack based buffer overflow with a little fuzzing</a></li>
-<li>GMON - Structured Exception Handler (SEH)</li>
+<li><a href="/posts/vulnserver_2_gmon.html">GMON - Structured Exception Handler (SEH)</a></li>
 <li>HTER - The input gets mangled</li>
 <li>KSTET - Egg Hunting</li>
 <li>GTER - More Egg Hunting</li>
@@ -112,12 +112,32 @@ EXIT
 </code></pre></div></div></div>
 <p>If it crashes on start, then you probably forgot to put the <code>essfunc.dll</code> file in the same directory as the <code>vulnserver.exe</code> binary.</p>
 <p>The vulnserver will listen on TCP port <code>9999</code> for incomming connections.</p>
+<h4 id="immunity-overview">Immunity Overview<a class="headerlink" href="#immunity-overview" title="Permanent link"> </a></h4>
+<p>The default CPU view of Immunity is split into four parts:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Immunity CPU View" src="/assets/img/vulnserver_cpu_overview.png"/></div></div></p>
 <h4 id="common-immunity-commands">Common Immunity Commands<a class="headerlink" href="#common-immunity-commands" title="Permanent link"> </a></h4>
-<p>You can unpause/pause the running execution using the <code>&lt;F9&gt;</code> button on your keyboard.</p>
-<p>You will often have to set a Breakpoint. <code>&lt;F2&gt;</code> toggles a breakpoint on the selected address.</p>
+<p>You can pause/unpause the running execution using the <code>&lt;F9&gt;</code> button on your keyboard (or by using the red Play/Pause buttons in the menu).</p>
+<p><code>&lt;F2&gt;</code> toggles a breakpoint on the selected address.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Toggle a breakpoint" src="/assets/img/vulnserver_4_breakpoint_f2.png"/></div></div></p>
+<p>You can reset the program by using the black rewind button in the upper menu <code>[&lt;&lt;]</code>.</p>
 <p>If you are in paused mode (after hitting a breakpoint for example), then you can step through the next commands individually with <code>&lt;F7&gt;</code>.</p>
 <p>If you want to jump to a specific address in order to look at the code/data or set a breakpoint on it, then you can do so with the Black Arrow button in the menubar. In the pop-up window enter the address in hexadecimal (without 0x in front) and it should jump to your desired address.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Go to address" src="/assets/img/vulnserver_3_goto.png"/></div></div></p>
 <p>If you are doing an SEH based buffer overflow and the debugger stopped on an exception, then you can resume execution using <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code></p>
+<p>You can see the SEH chain by pressing <code>&lt;Alt&gt;</code> + <code>&lt;S&gt;</code>. </p>
+<h4 id="common-mona-commands">Common Mona Commands<a class="headerlink" href="#common-mona-commands" title="Permanent link"> </a></h4>
+<p>See available loaded modules and their respective protections:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona modules
+</code></pre></div></div></div>
+<p>Find a byte sequence in a module:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona find -s <span class="s2">"\xff\xe4"</span> -m <span class="s2">"vulnserver.exe"</span>
+</code></pre></div></div></div>
+<p>Compare file content to stack content. E.g. in order to check bad characters. The <code>-a</code> is the start address for the comparison:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona compare -f Y:<span class="se">\b</span>adchars.bin -t raw -a 0111F9CC
+</code></pre></div></div></div>
+<p>Find POP POP RET gadget for SEH:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>!mona seh
+</code></pre></div></div></div>
                     <div class="article-meta">
                         <section class="article-share-section">
                             <a href="https://twitter.com/intent/tweet?text=Vulnserver%20Part%200%20-%20Overview%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fvulnserver_0_overview.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
@@ -148,7 +168,7 @@ EXIT
                         </section> 
                         <section class="article-meta-section">
                             
-                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-07 12:00:00-04:00">September 07, 2021</time></span>
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-14 12:00:00-04:00">September 14, 2021</time></span>
                         </section>
                     </div>
                 </article>
