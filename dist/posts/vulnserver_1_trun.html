@@ -12,10 +12,12 @@
         <meta property="og:site_name" content="secoats" />
         <meta property="og:title" content="Vulnserver Part 1 - TRUN" />
         <meta property="og:url" content="https://secoats.github.io/posts/vulnserver_1_trun.html" />
+        <meta property="og:image" content="https://secoats.github.io/assets/img/oats_field.jpg">
         <meta name="author" content="secoats">
         <meta property="article:author" content="secoats">
         <link rel="stylesheet" href="/assets/css/main.css" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Fira+Mono" />
     </head>
     <body>
         <div id="main">
@@ -35,10 +37,20 @@
                 <article class="mbox">
                     <h1 class="article-headline">Vulnserver Part 1 - TRUN</h1>
                     <p class="article-subline">
-                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 15 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 16 minute read</span> - <span class="article-meta-published">September 07, 2021</span>
                     </p>
-                    <p>In this first part of our Vulnserver series we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing.</p>
+                    <p>In this first part of <a href="/posts/vulnserver_0_overview.html">our Vulnserver series</a> we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing.</p>
 <p>I'll go into a little more detail in this first tutorial, as some concepts might be new to beginners.</p>
+<ol>
+<li><a href="#aaaa-not-today">AAAA? Not today!</a></li>
+<li><a href="#fuzzing-for-a-crash">Fuzzing for a Crash</a></li>
+<li><a href="#proof-of-concept">Proof of Concept</a></li>
+<li><a href="#eip-offset">EIP Offset</a></li>
+<li><a href="#bad-characters">Bad Characters</a></li>
+<li><a href="#jmp-esp">JMP ESP</a></li>
+<li><a href="#pop-calc">Pop Calc</a></li>
+<li><a href="#reverse-shell">Reverse Shell</a></li>
+</ol>
 <h2 id="aaaa-not-today">AAAA? Not today!<a class="headerlink" href="#aaaa-not-today" title="Permanent link"> </a></h2>
 <p>This is the basic anatomy of a buffer overflow Proof of Concept:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>

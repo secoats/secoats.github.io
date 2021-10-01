@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+      xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+            http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+<url>
+  <loc>https://secoats.github.io/</loc>
+  <lastmod>{{default_date}}</lastmod>
+  <priority>1.00</priority>
+</url>
+<url>
+  <loc>https://secoats.github.io/posts.html</loc>
+  <lastmod>{{default_date}}</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://secoats.github.io/categories.html</loc>
+  <lastmod>{{default_date}}</lastmod>
+  <priority>0.80</priority>
+</url>
+{%- for post in posts %}
+ <url>
+    <loc>{{post.get('custom_metadata').get('permalink')}}</loc>
+    <lastmod>{{post.get('metadata').get("updated").astimezone().replace(microsecond=0).isoformat()}}</lastmod>
+    <priority>0.80</priority>        
+</url>
+{%- endfor %}
+<url>
+  <loc>https://secoats.github.io/tags.html</loc>
+  <lastmod>{{default_date}}</lastmod>
+  <priority>0.64</priority>
+</url>
+</urlset>

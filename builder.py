@@ -8,6 +8,7 @@ import shutil
 import math
 import os
 import urllib.parse
+import datetime
 
 BASE_DOMAIN = "https://secoats.github.io"
 BASE_DIR = os.getcwd()
@@ -61,11 +62,6 @@ def build_blogpost(raw_content, template, output_path):
     print("tags", tags)
     print("cats", categories)
 
-    custom_metadata = {
-        'reading_time': reading_time,
-        'publish_date': publish_date_format
-    }
-
     # turn markdown into html    
     markdown_html = parse_markdown(markdown_text)
 
@@ -81,6 +77,12 @@ def build_blogpost(raw_content, template, output_path):
     print(twitter_share)
     print(facebook_share)
     print(linkedin_share)
+
+    custom_metadata = {
+        'reading_time': reading_time,
+        'publish_date': publish_date_format,
+        'permalink': permalink
+    }
 
     templated_html = template.render(
         navigation=template_navigation,
@@ -134,6 +136,10 @@ def setup_dist():
     shutil.rmtree(DIST_DIRECTORY)
     os.mkdir(DIST_DIRECTORY)
     os.mkdir(DIST_DIRECTORY + "/posts")
+
+    nj = open(DIST_DIRECTORY + "/.nojekyll", "w")
+    nj.write("")
+    nj.close()
 
     # copy /assets
     src_path = ASSETS_DIRECTORY
@@ -240,9 +246,15 @@ def build_tagpage(template, posts):
             #posts_by_categories[cat].append(post.get("metadata").get("title"))
             posts_by_tags[tag].append(post)
             
-    #print(posts_by_categories)
-
     return template.render(navigation=template_navigation, footer=template_footer, posts=posts, tags=posts_by_tags, sorted=sorted)
+
+def make_sitemap(posts):
+    print("Building sitemap")
+    template = Template(open(TEMPLATE_DIRECTORY + '/sitemap.j2.xml').read())
+    sitemap = template.render(posts=posts, default_date=datetime.datetime.now().astimezone().replace(microsecond=0).isoformat())
+
+    open(DIST_DIRECTORY + "/sitemap.xml", 'w').write(sitemap)
+    open(DIST_DIRECTORY + "/sitemap_google.xml", 'w').write(sitemap)
 
 
 setup_dist()
@@ -253,4 +265,5 @@ convert_mainpage(posts)
 convert_postspage(posts)
 convert_catpage(posts)
 convert_tagpage(posts)
+make_sitemap(posts)
 print(".........")

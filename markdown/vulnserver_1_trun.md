@@ -14,9 +14,18 @@ tags:
 summary: In this first part of our Vulnserver series we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing... 
 ---
 
-In this first part of our Vulnserver series we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing.
+In this first part of [our Vulnserver series](/posts/vulnserver_0_overview.html) we will take a look at the TRUN command. It offers a very simple Stack-based Buffer Overflow with a little bit of fuzzing.
 
 I'll go into a little more detail in this first tutorial, as some concepts might be new to beginners.
+
+1. [AAAA? Not today!](#aaaa-not-today)
+2. [Fuzzing for a Crash](#fuzzing-for-a-crash)
+3. [Proof of Concept](#proof-of-concept)
+4. [EIP Offset](#eip-offset)
+5. [Bad Characters](#bad-characters)
+6. [JMP ESP](#jmp-esp)
+7. [Pop Calc](#pop-calc)
+8. [Reverse Shell](#reverse-shell)
 
 
 ## AAAA? Not today!
@@ -154,6 +163,7 @@ b'TRUN /./././.' #... repeated many times
 If we count the sent characters then we get a total length of 10007 bytes.
 
 It seems the character values for '/' and '.' are required in order to cause a crash. Now the question would be how many of those we actually need in order to cause a crash. And whether we can replace some of those bytes with a proper payload. 
+
 
 ## Proof of Concept
 

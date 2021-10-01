@@ -11,7 +11,7 @@ tags:
   - tools
   - linux
   - windows
-summary: PyInstaller allows you to create stand-alone binaries that run on machines that do not have Python installed. On Linux it will create an executable ELF binary. On Widows...
+summary: PyInstaller allows you to create stand-alone binaries that run on machines that do not have Python installed. On Linux it will create an executable ELF binary. On Windows...
 ---
 
 **PyInstaller** allows you to create stand-alone binaries that run on machines that do not have Python installed.

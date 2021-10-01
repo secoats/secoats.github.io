@@ -1,7 +1,7 @@
 ---
 title: "Vulnserver Part 0 - Overview"
 published: 2021-09-07T12:00:00-04:00
-updated: 2021-09-07T12:00:00-04:00
+updated: 2021-09-14T12:00:00-04:00
 categories:
   - writeup
 tags:
@@ -45,8 +45,8 @@ EXIT
 Here is an overview of the ones I have explored:
 
 * [TRUN - Simple stack based buffer overflow with a little fuzzing](/posts/vulnserver_1_trun.html)
-* GMON - Structured Exception Handler (SEH)
-* HTER - The input gets mangled
+* [GMON - Structured Exception Handler (SEH)](/posts/vulnserver_2_gmon.html)
+* [HTER - The input gets mangled](/posts/vulnserver_3_hter.html)
 * KSTET - Egg Hunting
 * GTER - More Egg Hunting
 * LTER - Bad Char Galore
@@ -120,15 +120,56 @@ If it crashes on start, then you probably forgot to put the `essfunc.dll` file i
 The vulnserver will listen on TCP port `9999` for incomming connections.
 
 
+#### Immunity Overview
+
+The default CPU view of Immunity is split into four parts:
+
+![Immunity CPU View](/assets/img/vulnserver_cpu_overview.png)
+
+
 #### Common Immunity Commands
 
-You can unpause/pause the running execution using the `<F9>` button on your keyboard.
+You can pause/unpause the running execution using the `<F9>` button on your keyboard (or by using the red Play/Pause buttons in the menu).
 
-You will often have to set a Breakpoint. `<F2>` toggles a breakpoint on the selected address.
+`<F2>` toggles a breakpoint on the selected address.
+
+![Toggle a breakpoint](/assets/img/vulnserver_4_breakpoint_f2.png)
+
+You can reset the program by using the black rewind button in the upper menu `[<<]`.
 
 If you are in paused mode (after hitting a breakpoint for example), then you can step through the next commands individually with `<F7>`.
 
 If you want to jump to a specific address in order to look at the code/data or set a breakpoint on it, then you can do so with the Black Arrow button in the menubar. In the pop-up window enter the address in hexadecimal (without 0x in front) and it should jump to your desired address.
 
+![Go to address](/assets/img/vulnserver_3_goto.png)
+
 If you are doing an SEH based buffer overflow and the debugger stopped on an exception, then you can resume execution using `<Shift>` + `<F9>`
 
+You can see the SEH chain by pressing `<Alt>` + `<S>`. 
+
+
+#### Common Mona Commands
+
+See available loaded modules and their respective protections:
+
+```bash
+!mona modules
+```
+
+Find a byte sequence in a module:
+
+```bash
+!mona find -s "\xff\xe4" -m "vulnserver.exe"
+```
+
+Compare file content to stack content. E.g. in order to check bad characters. The `-a` is the start address for the comparison:
+
+```bash
+!mona compare -f Y:\badchars.bin -t raw -a 0111F9CC
+```
+
+Find POP POP RET gadget for SEH:
+
+```bash
+!mona seh
+```
