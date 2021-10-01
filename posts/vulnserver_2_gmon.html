@@ -40,6 +40,17 @@
                         <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 16 minute read</span> - <span class="article-meta-published">September 14, 2021</span>
                     </p>
                     <p>In the second part of <a href="/posts/vulnserver_0_overview.html">our Vulnserver series</a> we encounter a SEH-based buffer overflow. SEH stands for <strong>Structured Exception Handling</strong>. The exploitation process is sligthly different, but not really much harder than the vanilla buffer overflow of <a href="/posts/vulnserver_1_trun.html">TRUN</a>. </p>
+<ol>
+<li><a href="#fuzzing">Fuzzing</a></li>
+<li><a href="#proof-of-concept">Proof of Concept</a></li>
+<li><a href="#not-quite-the-same">Not Quite the Same</a></li>
+<li><a href="#controlling-nseh-and-seh">Controlling NSEH and SEH</a></li>
+<li><a href="#bad-characters">Bad Characters</a></li>
+<li><a href="#pop-pop-return">Pop Pop Return</a></li>
+<li><a href="#short-jump-out-of-nseh">Short Jump out of NSEH</a></li>
+<li><a href="#long-jump-to-the-buffer-start">Long Jump to the Buffer Start</a></li>
+<li><a href="#shellcode">Shellcode</a></li>
+</ol>
 <h2 id="fuzzing">Fuzzing<a class="headerlink" href="#fuzzing" title="Permanent link"> </a></h2>
 <p>I just re-used the fuzzer from <a href="/posts/vulnserver_1_trun.html#fuzzing-for-a-crash">TRUN</a>, switching out only the command. The result was pretty much the same.</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
@@ -123,19 +134,9 @@
 </code></pre></div></div></div>
 <p>This manages to consistently crash the server in Immunity.</p>
 <h2 id="not-quite-the-same">Not Quite the Same<a class="headerlink" href="#not-quite-the-same" title="Permanent link"> </a></h2>
-<p>One big difference to what we experienced with TRUN will be that after the crash the EIP will not be full of A's and the ESP will not point at a stack segment that we control directly:</p>
+<p>One big difference to what we experienced with TRUN will be that after the crash the EIP will not be full of A's and the ESP will not point at a stack segment that we control directly.</p>
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="Fuzzer crashes the server" src="/assets/img/vulnserver_gmon_10.png"/></div></div></p>
 <p>The program has been stopped because of an exception: <code>Access Violation when writing to [00F60000]...</code></p>
-<p>What we see is the following, located above our buffer content:</p>
-<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>__stack__
-    <span class="p">|</span> 00F5F1CC   <span class="m">00000000</span>  ....
-ESP &gt; 00F5F1D0   <span class="m">00401848</span>  H@.  vulnserv.00401848
-    <span class="p">|</span> 00F5F1D4   <span class="m">00401826</span>  <span class="p">&amp;</span>@.  RETURN to vulnserv.00401826 from &lt;JMP.<span class="p">&amp;</span>msvcrt.strcpy&gt;
-    <span class="p">|</span> 00F5F1D8   00F5F1E8  èñõ.  ASCII <span class="s2">"GMON /.AAAAA"</span>...
-    <span class="p">|</span> 00F5F1DC   <span class="m">00763520</span>   5v.  ASCII <span class="s2">"GMON /.AAAAA"</span>...
-    <span class="p">|</span> 00F5F1E0   <span class="m">00000000</span>  ....
-</code></pre></div></div></div>
-<p>With the ESP pointing at <code>00F5F1D0</code>, outside of our controlled stack space full of AA's.</p>
 <p>If we scroll down to the bottom of the buffer content, then we find this:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>__stack__
 00F5FFC8   <span class="m">41414141</span>  AAAA
@@ -162,11 +163,11 @@ ESP &gt; 00F5F1D0   <span class="m">00401848</span>  H@.  vulnserv.00401848
 <p>Immunity conveniently stopped the execution when it detected an Exception, this prevented the corrupt SEH pointer from being jumped to. You can let Immunity continue by pressing <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code>.</p>
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Chain was followed" src="/assets/img/vulnserver_gmon_12_seh_followed.png"/></div></div></p>
 <p>What we see now is quite similar to the TRUN crash. The program tried to jump to <code>41414141</code> (hex for AAAA) which then caused another Exception since that is a bogus address.</p>
-<p>This means we can exploit the program in a smilar fashion. First cause an exception and then use the overwritten SEH record in order to jump to some instructions of our choosing with a static address. Those instructions then get executed and hopefully the program jumps back to the buffer that we control.</p>
+<p>This means we can exploit the program in a similar fashion. First cause an exception and then use the overwritten SEH record in order to jump to some instructions of our choosing with a static address. Those instructions then get executed and hopefully the program jumps back to the buffer that we control.</p>
 <p>The only problem is that, as mentioned above, the ESP (Stack Pointer) has been moved outside of our controlled stack space. So using a simple <code>JMP ESP</code> like we did in TRUN won't work here.</p>
 <h2 id="controlling-nseh-and-seh">Controlling NSEH and SEH<a class="headerlink" href="#controlling-nseh-and-seh" title="Permanent link"> </a></h2>
-<p>This part is quite familar. We have to figure out the offset between the start of our buffer and the overwritten SEH record.</p>
-<p>We can repeat what we did before in TRUN. You know the drill.</p>
+<p>This part is quite similar to what we did in TRUN in order to figure out the EIP overwrite offset. </p>
+<p>We have to figure out the offset between the start of our buffer and the overwritten SEH record.</p>
 <p>Create a unique byte pattern with the length of our AAAA buffer:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>msf-pattern_create -l <span class="m">4096</span>
 </code></pre></div></div></div>
@@ -386,8 +387,9 @@ __stack__
 <p>If you look at the Stack window, then it appears that the ESP points at some sort of exception handler. And only two steps below it is the address of our overwritten NSEH (We put BBBB there).</p>
 <p>If we could move the ESP by only two steps (ESP + 4 + 4), then it would point at that address of our NSEH entry. A part of the stack that we have direct control over.</p>
 <p>Then we could load that address into some register and jump to it, or even better, we could use a return instruction.</p>
-<p>A return <code>RET</code> instruction works similar to a <code>JMP ESP</code>, but it does not jump directly to the value of the ESP. Rather it looks where the ESP points at and then uses that value for the jump. So basically exactly what we want to do.</p>
-<p>Now how do we move the ESP by those two steps?</p>
+<p>A return <code>RET</code> instruction works similar to a <code>JMP ESP</code>, but it does not jump directly to the value of the ESP. Rather it looks where the ESP points at and then uses that value for the jump.</p>
+<p>The <code>RET</code> instruction can also be imagined as a <code>POP EIP</code>. The four bytes stored at the location where the <code>ESP</code> points at is popped into the instruction pointer register.</p>
+<p>Now, how do we move the ESP by those two steps?</p>
 <p>There are two basic stack operations:</p>
 <p><strong>PUSH</strong> (add) a value onto the top of the stack and move the stack pointer one position forward to match the new entry. Forward in this case means a 4 byte lower memory address. (ESP = ESP - 4)</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>PUSH &lt;<span class="nb">source</span> register/value&gt;
@@ -736,7 +738,7 @@ __stack__
                         </section> 
                         <section class="article-meta-section">
                             
-                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-14 12:01:00-04:00">September 14, 2021</time></span>
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-30 12:01:00-04:00">September 30, 2021</time></span>
                         </section>
                     </div>
                 </article>
