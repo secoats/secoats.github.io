@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
         <title>secoats | Vulnserver Part 2 - GMON</title>
         <link rel="canonical" href="https://secoats.github.io/posts/vulnserver_2_gmon.html" />
-        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Roboto:wght@400;700&family=Noto+Sans&display=swap" rel="stylesheet" />
+        <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
         <meta property="og:type" content="article" />
         <meta property="og:locale" content="en_US" />
         <meta property="og:site_name" content="secoats" />
@@ -15,9 +20,6 @@
         <meta property="og:image" content="https://secoats.github.io/assets/img/oats_field.jpg">
         <meta name="author" content="secoats">
         <meta property="article:author" content="secoats">
-        <link rel="stylesheet" href="/assets/css/main.css" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Fira+Mono" />
     </head>
     <body>
         <div id="main">
@@ -162,7 +164,7 @@
 <p>Now what we see in Immunity is that we evidentally broke the first SEH record in the chain. We overwrote both NSEH and SEH pointers.</p>
 <p>Immunity conveniently stopped the execution when it detected an Exception, this prevented the corrupt SEH pointer from being jumped to. You can let Immunity continue by pressing <code>&lt;Shift&gt;</code> + <code>&lt;F9&gt;</code>.</p>
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="SEH Chain was followed" src="/assets/img/vulnserver_gmon_12_seh_followed.png"/></div></div></p>
-<p>What we see now is quite similar to the TRUN crash. The program tried to jump to <code>41414141</code> (hex for AAAA) which then caused another Exception since that is a bogus address.</p>
+<p>What we see now is quite similar to the TRUN crash. The program tried to jump to <code>41414141</code> (hex for AAAA) which then caused another Exception.</p>
 <p>This means we can exploit the program in a similar fashion. First cause an exception and then use the overwritten SEH record in order to jump to some instructions of our choosing with a static address. Those instructions then get executed and hopefully the program jumps back to the buffer that we control.</p>
 <p>The only problem is that, as mentioned above, the ESP (Stack Pointer) has been moved outside of our controlled stack space. So using a simple <code>JMP ESP</code> like we did in TRUN won't work here.</p>
 <h2 id="controlling-nseh-and-seh">Controlling NSEH and SEH<a class="headerlink" href="#controlling-nseh-and-seh" title="Permanent link"> </a></h2>
