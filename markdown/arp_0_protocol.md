@@ -764,7 +764,15 @@ Just like Alf, Bert will quickly notice that this entry is bogus though, if we d
 
 ### FreeBSD - pfSense Gateway
 
-Unlike Windows 11 and Debian Linux, the pfsense Gateway will update its ARP table when you send an unsolicited ARP Reply.
+Unlike Windows 11 and Debian Linux, the pfsense Gateway will update its ARP table when you send an unsolicited ARP Reply:
+
+![Middleman sends unsolicited Reply to Gateway](/assets/img/10_unsolicited_gateway.png)
+
+Gateway adds an entry based on the Reply:
+
+![Middleman sends unsolicited Reply to Gateway](/assets/img/11_unsolicited_gateway_censored.png)
+
+Otherwise this VM also behaves like Alf and Bert. A Request updates its table.
 
 
 ## Reference: Commands for testing with ARP

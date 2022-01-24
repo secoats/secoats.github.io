@@ -359,11 +359,7 @@ ul.social-icons li {
     }
 }
 
-@media (min-width: 80em) {
-    html {
-        font-size:20px
-    }
-}
+
 
 p > code, li > code {
     background-color:#ddd; 
