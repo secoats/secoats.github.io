@@ -622,7 +622,11 @@ Address                  HWtype  HWaddress           Flags Mask            Iface
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="Middleman tricks Bert" src="/assets/img/09_01_bamboozle_bert.png"/></div></div></p>
 <p>Just like Alf, Bert will quickly notice that this entry is bogus though, if we do not keep up the charade. It will re-establish the correct entry for Gateway with ARP eventually.</p>
 <h3 id="freebsd-pfsense-gateway">FreeBSD - pfSense Gateway<a class="headerlink" href="#freebsd-pfsense-gateway" title="Permanent link"> </a></h3>
-<p>Unlike Windows 11 and Debian Linux, the pfsense Gateway will update its ARP table when you send an unsolicited ARP Reply.</p>
+<p>Unlike Windows 11 and Debian Linux, the pfsense Gateway will update its ARP table when you send an unsolicited ARP Reply:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Middleman sends unsolicited Reply to Gateway" src="/assets/img/10_unsolicited_gateway.png"/></div></div></p>
+<p>Gateway adds an entry based on the Reply:</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Middleman sends unsolicited Reply to Gateway" src="/assets/img/11_unsolicited_gateway_censored.png"/></div></div></p>
+<p>Otherwise this VM also behaves like Alf and Bert.</p>
 <h2 id="reference-commands-for-testing-with-arp">Reference: Commands for testing with ARP<a class="headerlink" href="#reference-commands-for-testing-with-arp" title="Permanent link"> </a></h2>
 <p><strong>Note:</strong> You will have to run most of these as root / Administrator.</p>
 <h3 id="linux">Linux:<a class="headerlink" href="#linux" title="Permanent link"> </a></h3>
