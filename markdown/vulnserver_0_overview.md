@@ -47,11 +47,11 @@ Here is an overview of the ones I have explored:
 * [TRUN - Simple stack based buffer overflow with a little fuzzing](/posts/vulnserver_1_trun.html)
 * [GMON - Structured Exception Handler (SEH)](/posts/vulnserver_2_gmon.html)
 * [HTER - The input gets mangled](/posts/vulnserver_3_hter.html)
-* KSTET - Egg Hunting
-* GTER - More Egg Hunting
+* [KSTET - Egg Hunting](/posts/vulnserver_4_kstet.html)
+* GTER - More Egg Hunting / Socket Re-use
 * LTER - Bad Char Galore
 
-The TRUN command is probably the easiest of the available buffer overflows. So that is where we will start.
+The TRUN command is probably the easiest of the available buffer overflows. [So that is where we will start.](/posts/vulnserver_1_trun.html)
 
 ## Setup
 

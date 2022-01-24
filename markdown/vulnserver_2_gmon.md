@@ -165,7 +165,7 @@ Immunity conveniently stopped the execution when it detected an Exception, this 
 
 ![SEH Chain was followed](/assets/img/vulnserver_gmon_12_seh_followed.png)
 
-What we see now is quite similar to the TRUN crash. The program tried to jump to `41414141` (hex for AAAA) which then caused another Exception since that is a bogus address.
+What we see now is quite similar to the TRUN crash. The program tried to jump to `41414141` (hex for AAAA) which then caused another Exception.
 
 This means we can exploit the program in a similar fashion. First cause an exception and then use the overwritten SEH record in order to jump to some instructions of our choosing with a static address. Those instructions then get executed and hopefully the program jumps back to the buffer that we control.
 

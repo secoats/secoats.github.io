@@ -6,6 +6,50 @@ body {
     text-rendering:optimizeLegibility;
 }
 
+html {
+    box-sizing:border-box;
+    background-color:#f4f5f7;
+    font-size:16px;
+    font-family: "Roboto", -apple-system, BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Lucida Grande",Arial,sans-serif;
+    -webkit-text-size-adjust:100%;
+    -ms-text-size-adjust:100%
+}
+
+#main {
+    background-color:#e4e5e7;
+}
+
+#header {
+    background-color: #1a1d24;
+    color:#d6d6d6;
+    padding: 0.5em;
+    padding-bottom:0.6em;
+    font-size:1.1em;
+}
+
+#header a {
+    color: inherit;
+    text-decoration: none;
+    margin-right:15px;
+}
+
+#header a:hover, #footerbar a:hover {
+    color: white;
+    text-decoration: none;
+}
+
+#content {
+    background-color:white;
+    clear:both;
+    min-height:800px;
+    overflow:auto;
+}
+
+.main-nav {
+    float:right;
+    margin-top:4px;
+}
+
 .wrapper {
     max-width: 1280px;
     margin-left:auto;
@@ -41,8 +85,7 @@ p > a:visited, article a:visited {
 }
 
 .mbox {
-    margin:50px 75px;
-    
+    margin:50px 75px; 
 }
 
 .breaker {
@@ -115,54 +158,6 @@ a.article-tag:hover {
 a.article-tag:visited {
     color:#444;
     text-decoration: none;
-}
-
-html {
-    box-sizing:border-box;
-    background-color:#f4f5f7;
-    font-size:16px;
-    font-family: -apple-system,BlinkMacSystemFont,"Roboto","Segoe UI","Helvetica Neue","Lucida Grande",Arial,sans-serif;
-    -webkit-text-size-adjust:100%;
-    -ms-text-size-adjust:100%
-}
-
-#main {
-    background-color:#e4e5e7;
-}
-
-#header {
-    background-color: #1a1d24;
-    
-    color:#d6d6d6;
-    padding: 0.5em;
-    padding-bottom:0.6em;
-    font-family: -apple-system,BlinkMacSystemFont,"Roboto","Segoe UI","Helvetica Neue","Lucida Grande",Arial,sans-serif;
-    font-size:1.1em;
-}
-
-#header a {
-    color: inherit;
-    text-decoration: none;
-    margin-right:15px;
-
-}
-
-#header a:hover, #footerbar a:hover {
-    color: white;
-    text-decoration: none;
-    
-}
-
-#content {
-    background-color:white;
-    clear:both;
-    min-height:800px;
-    overflow:auto;
-}
-
-.main-nav {
-    float:right;
-    margin-top:4px;
 }
 
 .article-meta {
@@ -378,7 +373,7 @@ p > code, li > code {
 }
 
 pre {
-    font-family:Monaco, Bitstream Vera Sans Mono, Fira Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+    font-family: "Fira Mono", Monaco, "Bitstream Vera Sans Mono", "Noto Sans", "Lucida Console", Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
     font-size:0.9em;
     overflow-x:auto;
     box-sizing: border-box;
@@ -386,7 +381,7 @@ pre {
 }
 
 code {
-    font-family:Monaco, Bitstream Vera Sans Mono, Fira Mono, Lucida Console, Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+    font-family: "Fira Mono", Monaco, "Bitstream Vera Sans Mono", "Noto Sans", "Lucida Console", Terminal, ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
     font-size:0.9em;
 }
 
@@ -566,7 +561,6 @@ table.protocol td.stripes-bg {
     background-color:#eee; background-image:url(/assets/img/sky_plain.jpg); padding:25px; box-sizing: border-box;
 }
 
-
 .pseudo-terminal{
     background:#3A3C42;
     width: 100%;
@@ -574,7 +568,7 @@ table.protocol td.stripes-bg {
     padding:12px 0 0 0;
     margin-top: 20px;
     margin-bottom: 20px;
-    font-family: 'Roboto Mono', monospace;
+    font-family: 'Fira Mono', 'Roboto Mono', monospace;
     box-sizing: border-box;
 }
 
@@ -643,9 +637,9 @@ table.protocol td.stripes-bg {
     width: 100%;
     color: white;
     padding: 18px;
-    font-size: 14px;
+    font-size: 12px;
     outline: none;
-    font-family: 'Bitstream Vera Sans Mono', 'Fira Mono', 'Roboto Mono', monospace;
+    font-family: 'Fira Mono', 'Bitstream Vera Sans Mono', 'Roboto Mono', monospace;
     box-sizing: border-box;
 }
 

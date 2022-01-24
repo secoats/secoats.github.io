@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
         <title>secoats | Vulnserver Part 0 - Overview</title>
         <link rel="canonical" href="https://secoats.github.io/posts/vulnserver_0_overview.html" />
-        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Roboto:wght@400;700&family=Noto+Sans&display=swap" rel="stylesheet" />
+        <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
         <meta property="og:type" content="article" />
         <meta property="og:locale" content="en_US" />
         <meta property="og:site_name" content="secoats" />
@@ -15,9 +20,6 @@
         <meta property="og:image" content="https://secoats.github.io/assets/img/oats_field.jpg">
         <meta name="author" content="secoats">
         <meta property="article:author" content="secoats">
-        <link rel="stylesheet" href="/assets/css/main.css" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Fira+Mono" />
     </head>
     <body>
         <div id="main">
@@ -66,11 +68,11 @@ EXIT
 <li><a href="/posts/vulnserver_1_trun.html">TRUN - Simple stack based buffer overflow with a little fuzzing</a></li>
 <li><a href="/posts/vulnserver_2_gmon.html">GMON - Structured Exception Handler (SEH)</a></li>
 <li><a href="/posts/vulnserver_3_hter.html">HTER - The input gets mangled</a></li>
-<li>KSTET - Egg Hunting</li>
-<li>GTER - More Egg Hunting</li>
+<li><a href="/posts/vulnserver_4_kstet.html">KSTET - Egg Hunting</a></li>
+<li>GTER - More Egg Hunting / Socket Re-use</li>
 <li>LTER - Bad Char Galore</li>
 </ul>
-<p>The TRUN command is probably the easiest of the available buffer overflows. So that is where we will start.</p>
+<p>The TRUN command is probably the easiest of the available buffer overflows. <a href="/posts/vulnserver_1_trun.html">So that is where we will start.</a></p>
 <h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link"> </a></h2>
 <p>In the text below I will describe an example network lab setup and give an overview of the Immunity Debugger. You can skip all of this if you already have a home lab and know how to use a debugger.</p>
 <h3 id="virtual-machines">Virtual Machines<a class="headerlink" href="#virtual-machines" title="Permanent link"> </a></h3>

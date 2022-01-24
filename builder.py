@@ -17,6 +17,7 @@ ASSETS_DIRECTORY = BASE_DIR + "/assets"
 TEMPLATE_DIRECTORY = BASE_DIR + "/templates"
 POSTS_DIRECTORY = BASE_DIR + "/markdown"
 
+template_default_head = Template(open(TEMPLATE_DIRECTORY + '/template_head.j2.html').read()).render()
 template_navigation = Template(open(TEMPLATE_DIRECTORY + '/template_navigation.j2.html').read()).render()
 template_footer = Template(open(TEMPLATE_DIRECTORY + '/template_footer.j2.html').read()).render()
 
@@ -85,6 +86,7 @@ def build_blogpost(raw_content, template, output_path):
     }
 
     templated_html = template.render(
+        default_head=template_default_head,
         navigation=template_navigation,
         footer=template_footer,
         permalink=permalink,
@@ -188,7 +190,7 @@ def convert_mainpage(posts):
     
 def build_mainpage(template, posts):
     print("Building main page")
-    return template.render(navigation=template_navigation, footer=template_footer, posts=posts)
+    return template.render(default_head=template_default_head,navigation=template_navigation, footer=template_footer, posts=posts)
 
 
 def convert_postspage(posts):
@@ -198,7 +200,7 @@ def convert_postspage(posts):
 
 def build_postspage(template, posts):
     print("Building posts page")
-    return template.render(navigation=template_navigation, footer=template_footer, posts=posts)
+    return template.render(default_head=template_default_head,navigation=template_navigation, footer=template_footer, posts=posts)
 
 
 def convert_catpage(posts):
@@ -223,7 +225,7 @@ def build_catpage(template, posts):
             
     #print(posts_by_categories)
 
-    return template.render(navigation=template_navigation, footer=template_footer, posts=posts, categories=posts_by_categories)
+    return template.render(default_head=template_default_head, navigation=template_navigation, footer=template_footer, posts=posts, categories=posts_by_categories)
 
 
 def convert_tagpage(posts):
@@ -246,7 +248,7 @@ def build_tagpage(template, posts):
             #posts_by_categories[cat].append(post.get("metadata").get("title"))
             posts_by_tags[tag].append(post)
             
-    return template.render(navigation=template_navigation, footer=template_footer, posts=posts, tags=posts_by_tags, sorted=sorted)
+    return template.render(default_head=template_default_head, navigation=template_navigation, footer=template_footer, posts=posts, tags=posts_by_tags, sorted=sorted)
 
 def make_sitemap(posts):
     print("Building sitemap")
