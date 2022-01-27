@@ -1,7 +1,7 @@
 ---
 title: "Fun with ARP - A Look at the Protocol"
 published: 2022-01-24T12:00:00-04:00
-updated: 2022-01-24T12:00:00-04:00
+updated: 2022-01-27T12:00:00-04:00
 categories:
   - tutorial
   - programming
@@ -558,41 +558,30 @@ Now we start the Alf VM (Debian Linux 11) while having the ARP listener still ru
 
 ![Alf's ARP Announcements](/assets/img/01_middleman_alf_started_arp_announcement.png)
 
-An ARP Annoucement looks like a regular ARP Request directed at the broadcast MAC address `FF:FF:FF:FF:FF:FF`, but the source ipv4 address (SPA) will be the same as the target ipv4 address (TPA). So SPA = TPA. Depending on the implementation the source and target MAC address might also be the same, but that is not required.
+An **ARP Annoucement** looks like a regular ARP Request directed at the broadcast MAC address `FF:FF:FF:FF:FF:FF`, but the source IPv4 address (SPA) will be the same as the target ipv4 address (TPA). So SPA = TPA. Depending on the implementation the source and target MAC address might also be the same, but that is not required.
 
-The other hosts in the network segment *can* use this Request to update their ARP table, but they can also choose to ignore it. Our Middleman Kali Linux chooses to ignore it. It does not add an entry for Alf in its ARP table based on the Annoucements.
+Other hosts can **take the two source addresses and update their ARP Tables** accordingly. No Reply to these Requests is expected. If a Reply is received, then this would indicate an **IP Address conflict**.
 
-```bash
-$ arp -n
-Address                  HWtype  HWaddress           Flags Mask            Iface
-10.0.0.111               ether   08:00:27:cc:cc:cc   C                     eth0
-# still only the Gateway
-# no new entry for 10.0.0.1
-```
+The other hosts in the network segment *can* use this Request to update their ARP table, but they can also choose to ignore it. Our Middleman Kali Linux chooses to ignore it.
 
+Alf performs this Annoucement Request three times. 
 
-Alf performs this Annoucement Request three times. Afterwards it performs a regular ARP Request to its configured Gateway (10.0.0.111).
-
+Afterwards it performs a regular ARP Request to its configured Gateway (10.0.0.111).
 
 We won't see the Reply from the Gateway because it will be a Unicast Ethernet frame directed directly at the source of the Request. Activating promiscuous mode on Middleman's network interface does not help here, because VirtualBox simulates a network switch between the three hosts. If the switch does its job correctly, then a unicast frame will not be sent to uninvolved hosts.
-
-On Alf we can confirm that the ARP handshake was performed correctly even if we do not see it. The Gateway address pair will show up in Alf's ARP table.
-
-![Alf's ARP Request to Gateway](/assets/img/02_middleman_alf_gateway_request.png)
 
 
 ### Windows 11's Annoucements
 
-When we start Bert (Windows 11) we will also see ARP Announcements during startup. Windows 11 appears to play it safe and sends two different variants of the ARP announcement. 
+When we start Bert (Windows 11) we will also see ARP Announcements during startup. But we can also observe another variant of ARP:
 
-![Bert's ARP Announcements](/assets/img/03_middleman_bert_arp_annoucement.png)
+![Bert's ARP Probes and Announcements](/assets/img/03_middleman_bert_arp_annoucement.png)
 
-One kind has the SPA (IPv4 address) set to `0.0.0.0`. 
+The first kind has the SPA (IPv4 address) set to `0.0.0.0`, but otherwise looks like a regular ARP Annoucement. This is called an **ARP Prope**. Because the source IPv4 address is set to all zeroes it is not intended to update the ARP entries of other hosts. It's purpose is merely to check whether there is already a host with the desired IPv4 address in the network. If a Reply is received, then this would indicate an IP address conflict. If no Replies are received, then the address is assumed to be available.
 
-The second kind has `SPA = TPA` with both fields set to the interface ipv4 address (here `10.0.0.2`) just like Alf's Announcements.
+The second kind is once again a regular ARP Annoucement with `SPA = TPA`, both fields set to the interface IPv4 address (here `10.0.0.2`). Just like Alf's ARP Announcements.
 
 Just like Alf, Bert will also send ARP requests to the configured gateway for its network interface as part of the setup during startup. 
-
 
 
 ## ARP Table Update Behavior
