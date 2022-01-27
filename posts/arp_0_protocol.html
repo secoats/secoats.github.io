@@ -39,12 +39,29 @@
                 <article class="mbox">
                     <h1 class="article-headline">Fun with ARP - A Look at the Protocol</h1>
                     <p class="article-subline">
-                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 18 minute read</span> - <span class="article-meta-published">January 24, 2022</span>
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 20 minute read</span> - <span class="article-meta-published">January 24, 2022</span>
                     </p>
                     <p>The <strong>Address Resolution Protocol (ARP)</strong> (<a href="https://datatracker.ietf.org/doc/html/rfc826">RFC 826; 1982</a>) is an essential part of the TCP/IP protocol suite and will remain in common use as long as IPv4 sticks around. It is a very simple protocol and fun to hack with.</p>
 <p>In theory it can be used to translate any address of a given address system into another address of another address system. These addresses can be of variable byte length.</p>
 <p>In modern times ARP is most commonly used to figure out which MAC address (hardware address) is associated with a given IPv4 address (logical address) in an Ethernet network segment.</p>
 <p>In such a network every host keeps an ARP table. This table stores the known pairs of MAC and IPv4 addresses for neighboring hosts.</p>
+<h2 id="table-of-content">Table of Content<a class="headerlink" href="#table-of-content" title="Permanent link"> </a></h2>
+<ul>
+<li><a href="#simple-example">Simple Example</a></li>
+<li><a href="#no-security">No Security</a></li>
+<li><a href="#implementation-differences">Implementation Differences</a></li>
+<li><a href="#getting-practical">Getting Practical</a><ul>
+<li><a href="#byte-tables">Byte Tables</a></li>
+<li><a href="#logging-ethernet-and-arp">Logging Ethernet and ARP (Python)</a></li>
+<li><a href="#arp-in-action">ARP in Action</a></li>
+</ul>
+</li>
+<li><a href="#arp-announcements-and-probes">ARP Announcements and Probes</a></li>
+<li><a href="#arp-table-update-behavior">ARP Table Update Behavior (OS specific)</a></li>
+<li><a href="#reference-commands-for-testing-with-arp">Reference: Commands for Testing with ARP</a></li>
+<li><a href="#reference-arp-terminology-glossary">Reference: ARP Terminology Glossary</a></li>
+</ul>
+<h2 id="simple-example">Simple Example<a class="headerlink" href="#simple-example" title="Permanent link"> </a></h2>
 <p>Print ARP table on Linux:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="c1"># On host "Alf"</span>
 <span class="c1"># MAC: 08-00-27-aa-aa-aa</span>
@@ -105,14 +122,14 @@ Interface: <span class="m">10</span>.0.0.2 --- 0x7
 ? <span class="o">(</span><span class="m">10</span>.0.0.111<span class="o">)</span> at <span class="m">08</span>:00:27:cc:cc:cc <span class="o">[</span>ether<span class="o">]</span> on eth0
 ? <span class="o">(</span><span class="m">10</span>.0.0.2<span class="o">)</span> at <span class="m">08</span>:00:27:bb:bb:bb <span class="o">[</span>ether<span class="o">]</span> on eth0
 </code></pre></div></div></div>
-<p>Afterwards Alf can communicate with <code>10.0.0.2</code> (Bert).</p>
-<p>In the example above Bert will usually also add or update an entry for Alf in its own ARP table when it receives Alf's ARP Request. </p>
+<p>Afterwards Alf can now communicate with <code>10.0.0.2</code> (Bert).</p>
+<p>In the example above <strong>Bert will usually also add or update an entry for Alf in its own ARP table when it receives Alf's ARP Request</strong>. Using the sender hardware (SHA) and protocol (SPA) addresses in the Request. </p>
 <p>So one ARP handshake tends to updates the tables of both hosts. Otherwise Bert would have to send out its own ARP Request in order to figure out the MAC address associated with <code>10.0.0.1</code> (Alf). Which would create unnecessary network traffic.</p>
 <h2 id="no-security">No Security<a class="headerlink" href="#no-security" title="Permanent link"> </a></h2>
 <p>You might have noticed that in this process there is no mechanism that would ensure that the host that answers Alf's request is actually Bert and not some imposter. And you are right, there is none.</p>
-<p>Similarly you can also usually update the tables of other hosts simply by <strong>sending them an ARP Request</strong>. In that Request you can pretend to speak for any IPv4 address. This will usually also overwrie any existing dynamic ARP table entries for that IPv4 address.</p>
+<p>Similarly you can also usually <strong>update the tables of other hosts</strong> simply by <strong>sending them an ARP Request</strong>. In that Request you can pretend to speak for any IPv4 address. This will usually also overwrie any existing dynamic ARP table entries for that IPv4 address.</p>
 <p>Depending on the implementation of ARP, an <strong>unsolicited ARP Reply</strong> might have the same effect. "Unsolicited" means the target host never sent out an ARP Request that would warrant the ARP Reply. From my experience most Linux distributions usually ignore unsolicited Reply messages. Same with modern Windows versions. But the pfsense (FreeBSD) VM used below did accept them and updated their table accordingly.</p>
-<p>The two methods mentioned above are commonly exploited in the form of <strong>man-in-the-middle attacks</strong>, usually referred to as "ARP Spoofing" or "ARP cache poisoining".</p>
+<p>The two methods mentioned above are commonly exploited in the form of <strong>man-in-the-middle attacks</strong>, usually referred to as "ARP Spoofing" or "ARP cache poisoining". For example this can be used to read unencrypted network traffic, exploit trust relationships based on IP addresses or denial of service (DoS).</p>
 <p>There are some defense strategies to address this. </p>
 <p>One strategy is to <strong>manually set static ARP entries</strong> in the ARP tables of all the hosts and disabling the dynamic ARP Reply/Response system. This obviously defeats the whole point of ARP and quite often leads to unsustainable administrative effort. In very small network segments that rarely change this might be a good idea though.</p>
 <p>Other strategies involve <strong>automatic detection systems</strong> for suspicious ARP activity. For example <a href="https://en.wikipedia.org/wiki/Arpwatch">arpwatch</a> or <a href="https://en.wikipedia.org/wiki/ArpON">ArpON</a> to name some free ones.</p>
@@ -123,8 +140,8 @@ Interface: <span class="m">10</span>.0.0.2 --- 0x7
 <p>In some implementations entries might get refreshed automatically in regular intervals. For that the host will send regular ARP requests to the known neighbors in the table. The Ethernet frames of those ARP Requests will be addressed directly to the known MAC address of the neighbor in the ARP table, rather than using a broadcast MAC address. Depending on the answer (or the lack thereof) the local ARP table will be updated. </p>
 <p>The RFC 826 discusses these design decisions in the "Related issue" section at the bottom of the document.</p>
 <h2 id="getting-practical">Getting Practical<a class="headerlink" href="#getting-practical" title="Permanent link"> </a></h2>
-<p>Let us take a more practical look at ARP. Create some VM's of your choosing in VirtualBox (or some other virtualization software) and assign them to the same internal network.</p>
-<p>You can of course re-use some VMs you already have.</p>
+<p>Let us take a more practical look at ARP. I have created some VM's with different OS' in VirtualBox and assigned them to the same internal network.</p>
+<p>If you want to follow along you can of course re-use some VMs you already have.</p>
 <p>I mirrored the example above, plus I added a Kali VM that I will use to test the behavior of the other VMs:</p>
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="Network Lab" src="/assets/img/arp_vms.png"/></div></div></p>
 <ul>
@@ -237,12 +254,12 @@ Interface: <span class="m">10</span>.0.0.2 --- 0x7
 <td style="background-color:#b9c6a6aa;">Target protocol address (TPA)</td>
 </tr>
 </table>
-<p>The above first 8 bytes of an ARP message are static in length. It is followed by the address section.</p>
+<p>The first 8 bytes of the ARP message are static in length. They are followed by the address section.</p>
 <p>The address section <strong>can differ in length based on the values of HLEN and PLEN</strong>. </p>
 <p>But in the expected use case with MAC addresses and IPv4 addresses it will be 6 bytes and 4 bytes respectively for Sender and Target.</p>
 <h3 id="logging-ethernet-and-arp">Logging Ethernet and ARP<a class="headerlink" href="#logging-ethernet-and-arp" title="Permanent link"> </a></h3>
-<p>You can of course log ARP in tcpdump or Wireshark.</p>
-<p>But I will re-use some code that I used for <a href="https://secoats.github.io/posts/ethernet_sniffer.html">my article about writing a network sniffer from scratch</a>. If you require more details about the libraries and network constants that I am going to use, then check out that article.</p>
+<p>You can of course log ARP in <a href="https://www.tcpdump.org/manpages/tcpdump.1.html">tcpdump</a> or <a href="https://www.wireshark.org/">Wireshark</a>.</p>
+<p>But I will re-use some code that I used for <a href="https://secoats.github.io/posts/ethernet_sniffer.html">my blog post about writing a network sniffer from scratch</a>. If you require more details about the libraries and network constants that I am going to use, then check out that article.</p>
 <p>This code will also be used in the next part of this series about ARP Spoofing.</p>
 <p>I hacked together this listener for ARP and the Ethernet frames that transport it:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
@@ -475,12 +492,13 @@ Address                  HWtype  HWaddress           Flags Mask            Iface
 <span class="m">10</span>.0.0.111               ether   <span class="m">08</span>:00:27:cc:cc:cc   C                     eth0
 </code></pre></div></div></div>
 <p>The Gateway (pfSense VM) will also update its ARP table based on the Request and add an entry for Middleman. So Gateway does not have to send an ARP Request to Middleman.</p>
-<h2 id="arp-annoucements">ARP Annoucements<a class="headerlink" href="#arp-annoucements" title="Permanent link"> </a></h2>
+<h2 id="arp-announcements-and-probes">ARP Announcements and Probes<a class="headerlink" href="#arp-announcements-and-probes" title="Permanent link"> </a></h2>
 <h3 id="debians-announcements">Debian's Announcements<a class="headerlink" href="#debians-announcements" title="Permanent link"> </a></h3>
 <p>Now we start the Alf VM (Debian Linux 11) while having the ARP listener still running on Middleman (Kali Linux). We will observe an ARP announcement from Alf during its startup.</p>
 <p><div class="breaker breaker-image"><div class="repairman"><img alt="Alf's ARP Announcements" src="/assets/img/01_middleman_alf_started_arp_announcement.png"/></div></div></p>
 <p>An <strong>ARP Annoucement</strong> looks like a regular ARP Request directed at the broadcast MAC address <code>FF:FF:FF:FF:FF:FF</code>, but the source IPv4 address (SPA) will be the same as the target ipv4 address (TPA). So SPA = TPA. Depending on the implementation the source and target MAC address might also be the same, but that is not required.</p>
-<p>Other hosts can <strong>take the two source addresses and update their ARP Tables</strong> accordingly. No Reply to these Requests is expected. If a Reply is received, then this would indicate an <strong>IP Address conflict</strong>.</p>
+<p>Other hosts can <strong>take the two source addresses and update their ARP Tables</strong> accordingly. </p>
+<p>No Reply to these Announcement Requests is expected. If a Reply is received, then this would indicate an <strong>IP Address conflict</strong>.</p>
 <p>The other hosts in the network segment <em>can</em> use this Request to update their ARP table, but they can also choose to ignore it. Our Middleman Kali Linux chooses to ignore it.</p>
 <p>Alf performs this Annoucement Request three times. </p>
 <p>Afterwards it performs a regular ARP Request to its configured Gateway (10.0.0.111).</p>
@@ -493,7 +511,7 @@ Address                  HWtype  HWaddress           Flags Mask            Iface
 <p>Just like Alf, Bert will also send ARP requests to the configured gateway for its network interface as part of the setup during startup. </p>
 <h2 id="arp-table-update-behavior">ARP Table Update Behavior<a class="headerlink" href="#arp-table-update-behavior" title="Permanent link"> </a></h2>
 <p>Like I mentioned before, not all implementations of ARP behave the same way when it comes to updating the ARP table.</p>
-<p>The examples below assume the default configuration for the given OS on a fresh VM. Besides the default beavior you can influence the ARP update behavior (and you should do so in a hardened network environment) via configuration in almost all operating systems.</p>
+<p>The examples below assume the default configuration for the given OS on a fresh VM. Besides the default behavior you can influence the ARP update behavior (and you should do so in a hardened network environment) via configuration in almost all operating systems.</p>
 <p>I hacked together an ARP sender using the code we already have used as a library:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
 <span class="c1"># 0A75</span>
@@ -647,7 +665,7 @@ arp -a
 <span class="c1"># Clear ARP table</span>
 arp -d
 </code></pre></div></div></div>
-<h2 id="arping">arping<a class="headerlink" href="#arping" title="Permanent link"> </a></h2>
+<h3 id="arping">arping<a class="headerlink" href="#arping" title="Permanent link"> </a></h3>
 <p>You can manually send ARP messages with the <code>arping</code> utility (<a href="https://www.man7.org/linux/man-pages/man8/arping.8.html">man page</a>).</p>
 <p>It can be used similarly to the regular <code>ping</code> to verify connectivity between two hosts, just on layer 2 rather than layer 3.</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>arping <span class="o">[</span>-AbDfhqUV<span class="o">]</span> <span class="o">[</span>-c count<span class="o">]</span> <span class="o">[</span>-w deadline<span class="o">]</span> <span class="o">[</span>-i interval<span class="o">]</span>
@@ -670,6 +688,18 @@ arp -d
            IP <span class="nb">source</span> address to use in ARP packets.
 </code></pre></div></div></div>
 <p>So the tool can also be used to manipulate ARP entries on other hosts. But this ability is somewhat limited. For example it won't allow you to pretend to be a different MAC Address (in the frame) than your interface default (without some hacking).</p>
+<h2 id="reference-arp-terminology-glossary">Reference: ARP Terminology Glossary<a class="headerlink" href="#reference-arp-terminology-glossary" title="Permanent link"> </a></h2>
+<ul>
+<li><strong>ARP</strong> - <strong>Address Resolution Protocol</strong>. Translates logical addresses to hardware addresses in a local network. Most commonly used to figure out the MAC Address associated with an IPv4 Address in an Ethernet network segment.</li>
+<li><strong>ARP Annoucement</strong> - A broadcast ARP Request that is used to annouce an IP address change to the network. A Reply is not expected and would indicate an IP address conflict.</li>
+<li><strong>ARP cache poisoining</strong> - See "ARP Spoofing"</li>
+<li><strong>ARP Probe</strong> - A broadcast ARP Request that is used to check whether an IP address is already in use. A Reply would indicate an IP address conflict.</li>
+<li><strong>ARP Spoofing</strong> - A <a href="https://en.wikipedia.org/wiki/Man-in-the-middle_attack">Man-in-the-Middle attack</a> in which a hostile actor pretends to be another host by updating the ARP table of one or more other hosts. For example this can be used to read unencrypted traffic, exploit trust relationships or denial of service (DoS).</li>
+<li><strong>ARP Table</strong> - A data structure that maintains dynamic (discovered) and static ARP entries on a host. An entry contains the MAC Address and IPv4 address associated with a neighboring host. Also sometimes referred to as "ARP Cache".</li>
+<li><strong>Gratuitous ARP</strong> - An ARP Request/Reply that is not normally needed according to the ARP specification (<a href="https://datatracker.ietf.org/doc/html/rfc826">RFC 826</a>). Examples are unsolicited ARP Replies, ARP Probes or ARP Annoucements. See also: <a href="https://datatracker.ietf.org/doc/html/rfc5227">RFC 5227</a>.</li>
+<li><strong>NDP</strong> - <strong>Neighbor Discovery Protocol</strong>. Alternative protocol to ARP. Commonly used with IPv6.</li>
+<li><strong>Unsolicited ARP Reply</strong> - An ARP Reply sent to a host without a prior Request from that host. Usually for the purpose of updating the ARP table of that host.</li>
+</ul>
                     <div class="article-meta">
                         <section class="article-share-section">
                             <a href="https://twitter.com/intent/tweet?text=Fun%20with%20ARP%20-%20A%20Look%20at%20the%20Protocol%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Farp_0_protocol.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
