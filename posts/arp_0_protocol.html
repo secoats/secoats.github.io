@@ -87,14 +87,14 @@ Interface: <span class="m">10</span>.0.0.2 --- 0x7
 <p>Host Alf will first look into its own ARP table to see if it already knows the MAC address associated with the IPV4 address "10.0.0.2". If it already has an entry, then the info can be used directly and the ARP process ends here.</p>
 <p>If there is no entry, then host Alf will ask the entire local network: "Which host has IPv4 address 10.0.0.2?"</p>
 <p>This <strong>ARP Request</strong> will be sent as the payload of an Ethernet frame. The target MAC Address of this frame will be the broadcast address <code>ff:ff:ff:ff:ff:ff</code>. This means the frame is addressed to all hosts in the same LAN segment. All of those hosts should receive it.</p>
-<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">[</span><span class="c"> Ethernet Frame: Source: 08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa; Destination: ff</span><span class="nb">-</span><span class="c">ff</span><span class="nb">-</span><span class="c">ff</span><span class="nb">-</span><span class="c">ff</span><span class="nb">-</span><span class="c">ff</span><span class="nb">-</span><span class="c">ff; Content: ARP (0x806) </span><span class="k">]</span><span class="c"></span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
-<span class="c">    | ARP REQUEST                                 |</span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
-<span class="c">    | HTYPE 0x1 | PTYPE 0x800 | HLEN 6 | PLEN 4   |</span>
-<span class="c">    | SHA  08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa  | SPA  10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">1     |</span>
-<span class="c">    | THA  00</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">00  | TPA  10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">2     |</span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>[ Ethernet Frame: Source: 08-00-27-aa-aa-aa; Destination: ff-ff-ff-ff-ff-ff; Content: ARP (0x806) ]
+    -----------------------------------------------
+    | ARP REQUEST                                 |
+    -----------------------------------------------
+    | HTYPE 0x1 | PTYPE 0x800 | HLEN 6 | PLEN 4   |
+    | SHA  08-00-27-aa-aa-aa  | SPA  10.0.0.1     |
+    | THA  00-00-00-00-00-00  | TPA  10.0.0.2     |
+    -----------------------------------------------
 </code></pre></div></div></div>
 <ul>
 <li>HTYPE - Hardware type (0x1 = Ethernet)</li>
@@ -107,14 +107,14 @@ Interface: <span class="m">10</span>.0.0.2 --- 0x7
 <li>TPA - Target protocol address (10.0.0.2)</li>
 </ul>
 <p>If everything goes well, then Bert will receive this ARP Request and send an <strong>ARP Reply</strong> along the lines of: "I have IPv4 address 10.0.0.2 and here is my MAC address". This Reply Ethernet frame will be directed directly at the MAC Address of Alf (unicast).</p>
-<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">[</span><span class="c"> Ethernet Frame: Source: 08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">bb</span><span class="nb">-</span><span class="c">bb</span><span class="nb">-</span><span class="c">bb; Dest: 08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa; Content: ARP (0x806) </span><span class="k">]</span><span class="c"></span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
-<span class="c">    | ARP REPLY                                   |</span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
-<span class="c">    | HTYPE 0x1 | PTYPE 0x800 | HLEN 6 | PLEN 4   |</span>
-<span class="c">    | SHA  08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">bb</span><span class="nb">-</span><span class="c">bb</span><span class="nb">-</span><span class="c">bb  | SPA  10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">2     |</span>
-<span class="c">    | THA  08</span><span class="nb">-</span><span class="c">00</span><span class="nb">-</span><span class="c">27</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa</span><span class="nb">-</span><span class="c">aa  | TPA  10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">1     |</span>
-<span class="c">    </span><span class="nb">-----------------------------------------------</span><span class="c"></span>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>[ Ethernet Frame: Source: 08-00-27-bb-bb-bb; Dest: 08-00-27-aa-aa-aa; Content: ARP (0x806) ]
+    -----------------------------------------------
+    | ARP REPLY                                   |
+    -----------------------------------------------
+    | HTYPE 0x1 | PTYPE 0x800 | HLEN 6 | PLEN 4   |
+    | SHA  08-00-27-bb-bb-bb  | SPA  10.0.0.2     |
+    | THA  08-00-27-aa-aa-aa  | TPA  10.0.0.1     |
+    -----------------------------------------------
 </code></pre></div></div></div>
 <p>Alf will receive this Reply and update its ARP table accordingly:</p>
 <div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>root@alf:~$ arp -a
