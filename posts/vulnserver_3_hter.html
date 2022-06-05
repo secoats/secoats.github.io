@@ -37,12 +37,13 @@
             </div>
             <main id="content" class="wrapper">
                 <article class="mbox">
+                    
                     <h1 class="article-headline">Vulnserver Part 3 - HTER</h1>
                     <p class="article-subline">
                         <span class="article-meta-reading-time"><i class="far fa-clock" aria-hidden="true"></i> 10 minute read</span> - <span class="article-meta-published">September 30, 2021</span>
                     </p>
                     <p>This third part of <a href="/posts/vulnserver_0_overview.html">our Vulnserver series</a> looks rather easy at first. The buffer overflow can be done without any fuzzing. But once we look at the stack we find our input bytes have been changed. </p>
-<ol>
+<ul>
 <li><a href="#proof-of-concept">Proof of Concept</a></li>
 <li><a href="#stack-confusion">Stack Confusion</a></li>
 <li><a href="#eip-offset">EIP Offset</a></li>
@@ -51,7 +52,7 @@
 <li><a href="#jmp-esp">JMP ESP</a></li>
 <li><a href="#pop-calc">Pop Calc</a></li>
 <li><a href="#exploit">Exploit</a></li>
-</ol>
+</ul>
 <h2 id="proof-of-concept">Proof of Concept<a class="headerlink" href="#proof-of-concept" title="Permanent link"> </a></h2>
 <p>A crash can be achieved with a simple buffer containing the "HTER " command and a large number of "A" (0x41) bytes. </p>
 <p>I got it with my first attempt:</p>
@@ -523,12 +524,12 @@ nasm &gt; jmp esp
                             </span>
                         </section>
                         <section class="article-meta-section">
-                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2021-09-30 12:01:00-04:00">September 30, 2021</time></span>
+                            <span style="margin-right:1em;"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Published:</strong> <time datetime="2021-09-30 16:01:00">September 30, 2021</time></span>
                     
                         </section> 
                         <section class="article-meta-section">
                             
-                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-30 12:01:00-04:00">September 30, 2021</time></span>
+                            <span><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Last Updated:</strong> <time datetime="2021-09-30 16:01:00">September 30, 2021</time></span>
                         </section>
                     </div>
                 </article>
