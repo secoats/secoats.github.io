@@ -198,9 +198,8 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log("command", command);
         console.log(args);
 
-        print("<p class='userEnteredText'>&#062 " + inputText + "</p>");
+        print_text("> " + String(inputText));
         runcmd(command, args);
-
         clearInput();
     }
 
@@ -211,19 +210,19 @@ document.addEventListener('DOMContentLoaded', function() {
             CMD_DICT[command](argu);
         
         else
-            print("<b>" + command + "</b>: command not found");
+            print_text("" + command + ": command not found");
     }
 
     function whoami() {
-        print(user);
+        print_text(user);
     }
 
     function pwd() {
-        print(current_working_dir.getPathString());
+        print_text(current_working_dir.getPathString());
     }
 
     function help() {
-        print(helpMessage);
+        print_text(helpMessage);
     }
 
     function clear() {
@@ -235,21 +234,21 @@ document.addEventListener('DOMContentLoaded', function() {
         for(let group of groups) {
             res.push( "(" + group +")" );
         }
-        print(res.join());
+        print_text(res.join());
     }
 
     function motd() {
-        print(banner);
+        print_text(banner);
     }
 
     function hash(argu) {
         if(argu.length < 2) {
-            print("Error: missing argument [input]");
+            print_text("Error: missing argument [input]");
             return;
         }
         let input = argu[1];
         let res = SHA256(input);
-        print(res);
+        print_text(res);
     }
 
     function listDir(argu) {
@@ -269,71 +268,93 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function listDirFull(dir) {
-        const NL = "\n";
-        // did not bother with permissions for now
+        function makeTD(text) {
+            let textNode = document.createTextNode(String(text));
+            return makeTDRaw(textNode);
+        }
+
+        function makeTDRaw(element) {
+            let tableData = document.createElement("td");
+            tableData.appendChild(element);
+            return tableData;
+        }
+
         const dir_fake_permissions = 'drwxr-xr-x';
         const file_fake_permissions = '-rw-r--r--';
-        let res = "";
-        let last_len = 0;
 
-        function combine(arr) {
-            return arr.join(" ");
-        }
-
-        function pad(cont) {
-            if(cont.length < last_len) {
-                let padding = last_len - cont.length;
-                return cont + ' '.repeat(padding);
-            }
-            else if(cont.length > last_len) {
-                last_len = cont.length;
-                return cont;
-            }
-
-            return cont;
-        }
-
-        res += dir.getPathString() + NL;
-        res += pad( combine([ dir_fake_permissions, dir.getUser(), dir.getGroup()]) ) + '  <span class="console-dir">.</span>' + NL;
-
-        if(!!dir.parent && dir.parent instanceof Directory) {
-            res += pad( combine([ dir_fake_permissions, dir.parent.getUser(), dir.parent.getGroup()]) ) + '  <span class="console-dir">..</span>' + NL;
-        }
+        let outputTable = document.createElement("table");
+        outputTable.setAttribute("class", "console-dir-table");
         
-        for(const child of dir.getChildrenArray()) {
+        let dirArray = [];
+
+        // current directory .
+        dirArray.push(new Directory(".", dir.user, dir.group, dir.parent));
+
+        // parent directory ..
+        if(!!dir.parent) dirArray.push(new Directory("..", dir.parent.user, dir.parent.group, dir.parent.parent));
+
+        // children
+        dirArray = dirArray.concat(dir.getChildrenArray())
+
+        for ( const child of dirArray ) { 
+            let tableRow = document.createElement("tr");
+
             if(child instanceof ContentFile) {
-                res += pad( combine([ file_fake_permissions, child.getUser(), child.getGroup()]) ) + '  <span class="highlight">' + child.getName() + '</span>' + NL;
+                tableRow.appendChild(makeTD( file_fake_permissions ));
+            }
+            else if(child instanceof Directory) { 
+                tableRow.appendChild(makeTD( dir_fake_permissions ));
+            }
+
+            tableRow.appendChild(makeTD( child.getUser() ));
+            tableRow.appendChild(makeTD( child.getGroup() ));
+
+            let elementSpan = document.createElement("span");
+
+            if(child instanceof ContentFile) {
+                elementSpan.setAttribute("class", "highlight");
             }
             else if(child instanceof Directory) {
-                res += pad( combine([ dir_fake_permissions, child.getUser(), child.getGroup()]) ) + '  <span class="console-dir">' + child.getName() + '</span>' + NL;
+                elementSpan.setAttribute("class", "console-dir");
             }
+
+            elementSpan.appendChild(document.createTextNode(child.getName()) );
+            tableRow.appendChild(makeTDRaw(elementSpan));
+
+            outputTable.appendChild(tableRow);
         }
 
-        print(res);
+        print_element(outputTable)
     }
 
     function listDirSimple(dir) {
-        const NL = "\n";
-        let res = "";
+        let output = document.createElement("p");
+        output.setAttribute("class", "console-dir-container");
 
         for(const child of dir.getChildrenArray()) {
             if(!child.getName().startsWith('.')) {
-                if(child instanceof ContentFile) {         
-                    res += '<span class="highlight">' + child.getName() + '</span>' + NL;
+
+                let elementSpan = document.createElement("span");
+
+                if(child instanceof ContentFile) {
+                    elementSpan.setAttribute("class", "highlight");
                 }
-    
                 else if(child instanceof Directory) {
-                    res += '<span class="console-dir">' + child.getName() + '</span>' + NL;
+                    elementSpan.setAttribute("class", "console-dir");
                 }
+
+                elementSpan.appendChild(document.createTextNode(child.getName()) );
+                output.appendChild(elementSpan);
+                output.appendChild(document.createElement("br"));
             }
         }
 
-        print(res);
+        print_element(output)
     }
 
     function cat(argu) {
         if(argu.length < 2) {
-            print("Error: missing argument [filename]");
+            print_text("Error: missing argument [filename]");
             return;
         }
 
@@ -348,16 +369,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if(!!found) {
-            print(found.getContent());
+            print_text(found.getContent());
         } 
         else {
-            print("File not found");
+            print_text("File not found");
         }
     }
 
     function changeDir(argu) {
         if(argu.length < 2) {
-            print("Error: missing argument [filename]");
+            print_text("Error: missing argument [filename]");
             return;
         }
 
@@ -373,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 changePwd(current_working_dir.parent)
             }
             else {
-                print("Directory not found");
+                print_text("Directory not found");
             }
 
             return;
@@ -397,16 +418,17 @@ document.addEventListener('DOMContentLoaded', function() {
             changePwd(found);
         } 
         else {
-            print("Directory not found");
+            print_text("Directory not found");
         }
     }
 
     function changePwd(dir) {
         current_working_dir = dir;
-        print("Changed to: " + current_working_dir.getPathString());
+        print_text("Changed to: " + current_working_dir.getPathString());
     }
 
     //todo
+    /*
     function getFile(path, session) {
         const parts = path.split("/");
         
@@ -432,24 +454,36 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         return current;
-    }
+    }*/
  
-    var print = function(content){
-        document.getElementById(element_output).innerHTML += "<pre>" + content + "</pre>";
+    var print_element = function(element){
+        let parent = document.getElementById(element_output);
+        parent.appendChild(element);
+
+        //document.getElementById(element_output).innerHTML += "<pre>" + content + "</pre>";
         scrollBottom();
+    }
+
+    var print_text = function(content){
+        let new_element = document.createElement('pre');
+        let new_textnode = document.createTextNode(String(content));
+        new_element.appendChild(new_textnode);
+
+        print_element(new_element);
     }
 
     // Clear text input
     var clearInput = function(){
-      document.getElementById(element_input).value = "";
+        document.getElementById(element_input).value = "";
     }
   
     // Scroll to the bottom of the results div
     var scrollBottom = function(){
-      var terminalResultsDiv = document.getElementById(element_output);
-      terminalResultsDiv.scrollTop = terminalResultsDiv.scrollHeight;
+        let terminalResultsDiv = document.getElementById(element_output);
+        terminalResultsDiv.scrollTop = terminalResultsDiv.scrollHeight;
     }
 
+    // print banner
     motd();
 
     // Get the focus to the text input to enter a word right away.

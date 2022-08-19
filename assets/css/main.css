@@ -648,6 +648,17 @@ table.protocol td.stripes-bg {
     font-weight:bold;
 }
 
+.console-dir-container {
+    margin-top:0;
+}
+
+.console-dir-table {
+    margin-top:0;
+    margin-bottom:15px;
+    border-spacing:10px 0;
+}
+
+
 .tags-box-top {
     font-size:0.8em;
 }
