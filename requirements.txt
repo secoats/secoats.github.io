@@ -1,0 +1,4 @@
+python-frontmatter
+markdown
+Jinja2
+beautifulsoup4
